@@ -1,0 +1,171 @@
+---
+title: 紫微斗数，一行地址交给模型
+description: 把 https://ziwei.x-haose.com/mcp 交给 Cursor 或 Claude。模型排盘、用白话讲盘。chart 与 to_text 已冻，与 iztro v2.6.1 逐字段对齐。
+icon: Bot
+---
+
+*适合：用 Cursor 或 Claude 的人。不用装库，不用写代码*
+
+紫微斗数，一行地址交给模型。
+
+报出公历、时辰和性别，模型自己去排盘；再请它用白话讲这张盘。
+排盘不是模型心算的——它调用已经冻住的两个工具，结果与 JS [iztro](https://github.com/SylarLong/iztro) v2.6.1 逐字段对齐，
+716,314 例金标守着这条线。解读仍归模型，这一页不替它下结论。
+
+## 这一行
+
+```text title="MCP"
+https://ziwei.x-haose.com/mcp
+```
+
+客户端只填这个地址。不用克隆仓库，不用装 Python，不用自己起服务。
+
+三件事让这一行可以放心交出去：
+
+- **与 iztro v2.6.1 逐字段对齐。** 716,314 例金标（71 万+），允许的差异是 0。这是复现口径，不是流派裁决。见[准确性保证](/zh/docs/guide/about/accuracy)。
+- **契约可钉。** 工具只有 `chart` 和 `to_text`。名字、必填字段、返回形状已经冻住，写在这一页的后半。
+- **一行 URL 即用。** Streamable HTTP。Cursor 与 Claude 都直接认这个地址。
+
+<Callout title="浏览器打开它看不到文章">
+`/mcp` 是给客户端连的端点，不是文档页。要读的是这一页；要复制的是上面那一行。
+</Callout>
+
+## 装进 Cursor
+
+用户级配置写在 `~/.cursor/mcp.json`，只给当前项目用就写在项目里的 `.cursor/mcp.json`。
+也可以从 Cursor Settings → MCP 打开同一份文件。
+
+```json title="Cursor"
+{
+  "mcpServers": {
+    "ziwei": {
+      "url": "https://ziwei.x-haose.com/mcp"
+    }
+  }
+}
+```
+
+<Steps>
+<Step>把上面的 JSON 贴进配置。已经有别的服务器时，只把 `"ziwei"` 这一段合并进 `mcpServers`，不要整份覆盖。</Step>
+<Step>回到 MCP 设置，确认 `ziwei` 已连接。没亮起来就重载一次窗口。</Step>
+<Step>新开一个对话，用[下面这两句](#装上之后怎么说)试一次。</Step>
+</Steps>
+
+## 装进 Claude
+
+比 Cursor 多一个 `"type": "http"`。Claude Code 写在项目根目录的 `.mcp.json`，或写进用户配置里的 `mcpServers`。
+
+```json title="Claude"
+{
+  "mcpServers": {
+    "ziwei": {
+      "type": "http",
+      "url": "https://ziwei.x-haose.com/mcp"
+    }
+  }
+}
+```
+
+Claude 桌面端和 claude.ai 走自定义连接器时，地址填同一行 `https://ziwei.x-haose.com/mcp`。若连接器要一份 JSON，用上面这份。
+
+<Steps>
+<Step>保存配置，或在连接器里贴上地址。</Step>
+<Step>新开一个对话。工具列表里应能看到 `chart` 和 `to_text`，没有第三个。</Step>
+<Step>用[下面这两句](#装上之后怎么说)试一次。</Step>
+</Steps>
+
+## 装上之后怎么说
+
+不必背参数名。用白话说，模型自己去填。
+
+| 你说 | 模型调用 |
+| --- | --- |
+| 「帮我排个盘：公历 2000-8-16，寅时，女」 | `chart` |
+| 「用白话讲讲这张盘」 | `to_text` |
+
+第一句排出 2000 年 8 月 16 日、寅时、女性的本命盘。寅时是时辰索引 `2`（03:00–05:00），模型会自己换算。
+
+第二句让模型去取这张盘的 Markdown，再据此用白话讲。`to_text` 交出来的是盘面事实（默认带知识包释义），不是已经写好的「事业如何」。话是模型说的，数是工具算的。
+
+两句可以分两次说，也可以写在同一条消息里。
+
+<Callout type="warn" title="别让模型自己安星">
+它算不准干支与安星，而且错得看不出来。盘只从 `chart` / `to_text` 来。
+模型若开始凭记忆报星，让它重新调用工具。这条分工的展开说明见[让 AI 解读命盘](/zh/docs/guide/guides/llm)。
+</Callout>
+
+## 已冻的契约
+
+工具只有这两个。下面的必填字段和返回键是可以钉死的部分：以后可以加可选字段，不会改名、不会删掉这些键。
+
+公历最短的一次入参，对应「帮我排个盘：公历 2000-8-16，寅时，女」：
+
+```json title="chart / to_text 最短入参"
+{
+  "calendar": "solar",
+  "date": "2000-8-16",
+  "timeIndex": 2,
+  "gender": "female"
+}
+```
+
+两个工具共用这一组出生参数：
+
+| 字段 | 必填 | 取值 |
+| --- | --- | --- |
+| `calendar` | 是 | `solar` 公历，`lunar` 农历 |
+| `date` | 是 | `YYYY-M-D`，如 `2000-8-16`。公历年份 1583–9999 |
+| `timeIndex` | 是 | 整数 0–12。0 早子时，12 晚子时，见[下表](#时辰) |
+| `gender` | 是 | `male` 或 `female` |
+| `language` | 否 | 默认 `zh-CN`。另有 `zh-TW` `en-US` `ja-JP` `ko-KR` `vi-VN` |
+| `fixLeap` | 否 | 默认 `true`，只对公历有意义 |
+| `leap` | 农历必填 | `notLeap`、`leap`、`leapFixed` |
+| `config` | 否 | 六个分界开关。省略即 iztro 默认，见 [Config](/zh/docs/guide/guides/config) |
+
+默认盘面语言是简体中文。给模型喂中文盘，比喂英文意译星名更稳，见[让 AI 解读命盘](/zh/docs/guide/guides/llm#用中文盘喂模型)。
+
+### `chart`
+
+星盘 JSON。返回 `{ "astrolabe": { ... } }`，键与 x-iztro 的 `to_dto()` 对齐，契约键是语言无关的 `*_key`。
+
+要运限时再加上目标日期，两个一起给，返回里才多出 `horoscope`：
+
+| 字段 | 取值 |
+| --- | --- |
+| `targetDate` | 公历 `YYYY-M-D` |
+| `targetTimeIndex` | 0–12，与 `targetDate` 成对出现 |
+
+### `to_text`
+
+同一组出生参数，返回 `{ "text": "..." }`。`text` 是 Markdown，不是 `astrolabe_to_prompt` 那种带指令的提示词。格式见[语义化文本](/zh/docs/guide/guides/to-text)。
+
+| 字段 | 默认 | 含义 |
+| --- | --- | --- |
+| `knowledge` | `true` | `true` 用内嵌知识包，释义跟在事实旁；`false` 只有盘面事实 |
+| `includeHoroscope` | `false` | `true` 时必须带 `targetDate` 与 `targetTimeIndex`，正文是本命盘接运限 |
+
+## 时辰
+
+`timeIndex` 不是钟点。子时拆成首尾两段，所以是 0–12 共 13 个值。
+
+| 索引 | 时辰 | 时间 | 索引 | 时辰 | 时间 |
+| --- | --- | --- | --- | --- | --- |
+| 0 | 早子时 | 00:00–01:00 | 7 | 未时 | 13:00–15:00 |
+| 1 | 丑时 | 01:00–03:00 | 8 | 申时 | 15:00–17:00 |
+| 2 | 寅时 | 03:00–05:00 | 9 | 酉时 | 17:00–19:00 |
+| 3 | 卯时 | 05:00–07:00 | 10 | 戌时 | 19:00–21:00 |
+| 4 | 辰时 | 07:00–09:00 | 11 | 亥时 | 21:00–23:00 |
+| 5 | 巳时 | 09:00–11:00 | 12 | 晚子时 | 23:00–24:00 |
+| 6 | 午时 | 11:00–13:00 | | | |
+
+<Callout type="warn" title="晚上 11 点以后是 12，不是 0">
+23:00–24:00 出生要说「晚子时」或「23 点」，不要笼统说「子时」。
+这两个索引排出的盘不同：默认配置下晚子时按次日推算日柱。
+见 [Config · 晚子时归属](/zh/docs/guide/guides/config#晚子时归属-day_divide)。
+</Callout>
+
+## 它不做什么
+
+- 不写命理结论。`to_text` 是盘面文字，解读是模型在读完这段文字之后的事。
+- 不接受模型自己安星、自己推干支。
+- 不替代把库嵌进你自己的产品。那条路仍是装 Rust / Python / Go，见[快速开始](/zh/docs/guide/getting-started)和[让 AI 解读命盘](/zh/docs/guide/guides/llm)。

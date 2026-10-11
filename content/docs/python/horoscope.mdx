@@ -1,0 +1,731 @@
+---
+title: 运限对象
+description: 六个运限层级的数据结构、整层取回的三个列表，以及不必再传星盘的宫位查询方法。
+---
+
+运限把本命盘投影到某个时间点上。同一张盘，不同年份看到的宫位分布不同——
+这正是「大限走到哪一宫」的意思。
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+```
+
+`Horoscope` 持有发起它的那张本命盘，因此所有查询方法都不必再把星盘传进去。
+每个查询方法末尾那个 `astrolabe=None` 参数是为「手里只有运限数据、星盘另存」的场合留的，
+日常用不着传。
+
+<Callout type="info">
+本页示例统一用默认的 `zh-CN` 本命盘，因此输出里的展示值都是中文。
+</Callout>
+
+## 字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `solar_date` | `str` | **目标**公历日期，与入参一致 |
+| `lunar_date` | `str` | 目标日期的农历中文写法 |
+| `decadal` `age` `yearly` `monthly` `daily` `hourly` | 见下 | 六个运限层级 |
+
+`solar_date` 是目标日期不是出生日期；出生日期在本命盘上，用 `h.astrolabe().solar_date` 取。
+
+## 六个层级
+
+| 字段 | 类型 | 跨度 | 说明 |
+| --- | --- | --- | --- |
+| `decadal` | `HoroscopeItem` | 十年 | 大限。未起运的幼年期为童限 |
+| `age` | `AgeItem` | 一年 | 小限。按虚岁逐年走一宫 |
+| `yearly` | `HoroscopeYearly` | 一年 | 流年。按流年干支定宫 |
+| `monthly` | `HoroscopeItem` | 一月 | 流月 |
+| `daily` | `HoroscopeItem` | 一日 | 流日 |
+| `hourly` | `HoroscopeItem` | 一时辰 | 流时 |
+
+<Callout type="info" title="小限与流年的区别">
+两者都是一年一走，但起法不同：小限从生年地支起、按虚岁顺推，
+流年直接看那一年的干支落在哪一宫。两条线互相独立，斗数里通常并看。
+</Callout>
+
+### HoroscopeItem
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `index` | `int` | 该层级落在哪一宫（宫位索引） |
+| `name` | `str` | 层级显示名，按输出语言翻译 |
+| `name_key` | `str` | 层级标识：`decadal` / `childhood`（童限，未起运）/ `turn`（小限）/ `yearly` / `monthly` / `daily` / `hourly`。判断层级用它，不要比对译文 |
+| `heavenly_stem` / `heavenly_stem_key` | `str` | 该层级的天干，决定它飞出的四化 |
+| `earthly_branch` / `earthly_branch_key` | `str` | 该层级的地支 |
+| `palace_names` / `palace_name_keys` | `list[str]` | 以该层级所在宫为命宫重推的十二宫名，按宫位索引排列 |
+| `mutagen` / `mutagen_star_keys` | `list[str]` | 该层级天干引发的四化星，顺序为禄权科忌；`mutagen_star_keys` 是被化四星的星耀标识，与宫位的同名字段同义 |
+| `stars` | `list[list[Star]] \| None` | 该层级的流耀分布；无流耀的层级为 `None` |
+
+`AgeItem` 与 `HoroscopeYearly` 继承 `HoroscopeItem`，各自多一个字段：
+
+| 类型 | 多出的字段 | 说明 |
+| --- | --- | --- |
+| `AgeItem` | `nominal_age: int` | 该日期对应的虚岁 |
+| `HoroscopeYearly` | `yearly_dec_star: YearlyDecStar` | 流年的岁前与将前十二神 |
+
+```python
+class YearlyDecStar:
+    jiangqian12: list[str]        # 流年将前十二神译名，按宫位索引排列
+    jiangqian12_keys: list[str]   # 对应标识
+    suiqian12: list[str]          # 流年岁前十二神译名
+    suiqian12_keys: list[str]     # 对应标识
+```
+
+因为是继承而不是包装，通用字段直接访问就行：写 `h.yearly.heavenly_stem`，
+没有 Rust 侧那层 `.base`。
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+
+print(h.yearly.heavenly_stem, h.yearly.earthly_branch, h.age.nominal_age)
+print(h.yearly.yearly_dec_star.suiqian12[:3])
+print(h.yearly.yearly_dec_star.jiangqian12_keys[:3])
+```
+
+**输出**
+
+```text
+乙 巳 26
+['天德', '吊客', '病符']
+['jiesha', 'zhaisha', 'tiansha']
+```
+
+**示例**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+
+for item in (h.decadal, h.monthly, h.daily, h.hourly):
+    print(f"{item.name} 落在宫位 {item.index} 干支 {item.heavenly_stem}{item.earthly_branch}")
+
+print("小限虚岁", h.age.nominal_age)
+print("大限四化", h.decadal.mutagen)
+```
+
+**输出**
+
+```text
+大限 落在宫位 2 干支 庚辰
+流月 落在宫位 3 干支 壬午
+流日 落在宫位 8 干支 辛丑
+流时 落在宫位 8 干支 戊子
+小限虚岁 26
+大限四化 ['太阳', '武曲', '太阴', '天同']
+```
+
+---
+
+## 三个列表
+
+`decadal_list` / `yearly_list` / `monthly_list` 是 `Astrolabe` 上的方法，不在运限对象上：
+它们一次取回整层的运限项，省去按日期逐个调 `horoscope` 再自己拼。
+三种列表项都继承 `HoroscopeItem`，通用字段直接访问，各自多带该层的时间坐标：
+
+| 类型 | 多出的字段 | 说明 |
+| --- | --- | --- |
+| `DecadalListItem` | `palace_name` / `palace_name_key`: `str` | 该大限所在的本命宫名 |
+| | `age_range`: `tuple[int, int]` | 起止虚岁，含两端 |
+| | `year_range`: `tuple[int, int]` | 起止农历年份，含两端 |
+| `YearlyListItem` | `age`: `int` | 该流年对应的虚岁 |
+| | `year`: `int` | 农历年份 |
+| `MonthlyListItem` | `age`: `int` | 该流月对应的虚岁 |
+| | `year`: `int` | 农历年份 |
+| | `month`: `int` | 农历月份，正月为 1；闰月与同号常规月的 `month` 相同 |
+| | `is_leap_month`: `bool` | 该项是否闰月 |
+| | `part`: `str` | 分段标识，取值见 `MonthPart` 枚举 |
+| | `day_range`: `tuple[int, int]` | 该段覆盖的农历日，含两端 |
+
+`MonthPart` 三个取值：`NORMAL` 整月一段、`FIRST` 闰月前半、`SECOND` 闰月后半。
+
+<Callout type="info" title="列表里的运限按时柱地支起">
+三个列表的每一项都以**时柱地支**对应的时辰计算，而不是排盘时传入的 `time_index`。
+两者只在晚子时不同：入参 12 的盘，时柱地支是子，列表按时辰 0 起运限。
+</Callout>
+
+---
+
+## decadal_list
+
+**用途**　一次取回本盘十二个大限，按起运先后排列。
+
+**斗数含义**　大限十年一步，从起限宫顺逆行走十二宫。
+把整条线摊平看，才知道某一段人生落在哪一宫、对应哪十年。
+
+**签名**
+
+```python
+def decadal_list(self) -> list[DecadalListItem]
+```
+
+**返回值**　定长 12 项，第 0 项是第一个大限。顺序按起运虚岁排，
+与宫位索引顺序无关（大限顺行逆行取决于阴阳男女）。
+
+**示例**
+
+```python
+for d in chart.decadal_list()[:3]:
+    print(d.palace_name, d.heavenly_stem, d.earthly_branch, d.age_range, d.year_range)
+
+print(len(chart.decadal_list()))
+```
+
+**输出**
+
+```text
+命宫 壬 午 (3, 12) (2002, 2011)
+兄弟 辛 巳 (13, 22) (2012, 2021)
+夫妻 庚 辰 (23, 32) (2022, 2031)
+12
+```
+
+这张盘三岁起运，第一个大限落在命宫。
+
+**边界与陷阱**
+
+<Callout type="info" title="列表里没有童限">
+起运之前的那几年是童限，只有按具体日期查 `horoscope` 才会出现（`name_key` 为 `childhood`）。
+`decadal_list` 列的是十二个大限本身，每项的 `name_key` 恒为 `decadal`。
+</Callout>
+
+---
+
+## yearly_list
+
+**用途**　取一个大限内的全部流年。
+
+**斗数含义**　定了大限再逐年细看，是斗数常规的推运顺序。
+一个大限十年，对应的就是这十个流年。
+
+**签名**
+
+```python
+def yearly_list(self, decadal: int | PalaceName | str | None = None) -> list[YearlyListItem]
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `decadal` | `int \| PalaceName \| str \| None` | 是 | `None` | 大限序号（`int`，0 为第一个大限）或该限所在的本命宫名标识 |
+
+两种写法定位到同一个大限时结果完全相同，选哪个取决于手上已有什么。
+
+**返回值**　10 项，按虚岁先后排列。
+
+**异常**　未给出定位、大限序号越界、宫名定位不到时抛 `IztroError`。
+
+**示例**
+
+```python
+years = chart.yearly_list(2)
+
+for y in years[:3]:
+    print(y.age, y.year, y.heavenly_stem, y.earthly_branch, "->", y.index)
+
+print(len(years), len(chart.yearly_list("spousePalace")))
+```
+
+**输出**
+
+```text
+23 2022 壬 寅 -> 0
+24 2023 癸 卯 -> 1
+25 2024 甲 辰 -> 2
+10 10
+```
+
+第 2 个大限落在夫妻宫，因此 `yearly_list(2)` 与 `yearly_list("spousePalace")` 是同一个大限。
+
+**边界与陷阱**
+
+<Callout type="warn" title="参数虽有默认值，但不给就报错">
+`decadal=None` 不是「取当前大限」，而是抛 `IztroError`——静默取一个默认值会把漏传
+变成看起来成功的错答案。
+</Callout>
+
+---
+
+## monthly_list
+
+**用途**　取一个农历年的全部流月。
+
+**斗数含义**　流月是流年之下的一层，逐月推移。闰月怎么算是一个流派分歧点，
+因此拆不拆由调用方定。
+
+**签名**
+
+```python
+def monthly_list(self, year: int, fix_leap: bool = True) -> list[MonthlyListItem]
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `year` | `int` | 是 | — | 农历年份 |
+| `fix_leap` | `bool` | 否 | `True` | 闰月是否拆成前后半月两项 |
+
+**返回值**　长度取决于该年有无闰月与 `fix_leap`：
+
+| 该农历年 | `fix_leap` | 项数 | 闰月怎么排 |
+| --- | --- | --- | --- |
+| 无闰月 | 任意 | 12 | — |
+| 有闰月 | `True` | 14 | 闰月拆成 `first`（初一至十五）与 `second`（十六至月末）两项 |
+| 有闰月 | `False` | 13 | 闰月整月一项，`part` 为 `normal` |
+
+闰月排在同月号的常规月之后。每项按该段首日算出（后半段取十六）。
+
+**异常**　该农历年不存在，或某一段的目标日期落在支持范围外时抛 `IztroError`。
+
+**示例**
+
+```python
+months = chart.monthly_list(2020)
+
+print(len(months))
+for m in months[3:7]:
+    print(m.month, m.is_leap_month, m.part, m.day_range, m.heavenly_stem, m.earthly_branch)
+
+print(len(chart.monthly_list(2020, fix_leap=False)), len(chart.monthly_list(2021)))
+```
+
+**输出**
+
+```text
+14
+4 False normal (1, 30) 辛 巳
+4 True first (1, 15) 辛 巳
+4 True second (16, 29) 壬 午
+5 False normal (1, 30) 壬 午
+13 12
+```
+
+农历 2020 年有闰四月。拆开之后，闰四月前半与四月同干支（辛巳），后半跟五月同干支（壬午）
+——这正是「闰月下半月算下一个月」的意思。农历 2021 年无闰月，恒为 12 项。
+
+**边界与陷阱**
+
+<Callout type="warn" title="这个 fix_leap 与排盘的 fix_leap 无关">
+排盘入口那个 `fix_leap` 决定闰月出生的人下半月按下个月安星，改的是本命盘布局；
+这里这个只决定本列表拆不拆闰月。两者可以取不同的值，互不影响。
+</Callout>
+
+<Callout type="info" title="闰月与常规月的 month 相同">
+闰四月的 `month` 也是 `4`，靠 `is_leap_month` 区分。按 `month` 去重会把闰月弄丢。
+</Callout>
+
+---
+
+## age_palace
+
+**用途**　取小限当年所在的宫。
+
+**斗数含义**　小限是逐年推移的一条线，落在哪一宫就以那宫为该年重点。
+
+**签名**
+
+```python
+def age_palace(self, astrolabe: Astrolabe | None = None) -> Palace | None
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `astrolabe` | `Astrolabe \| None` | 否 | `None` | 通常不传，运限已持有本命盘 |
+
+**返回值**　`Palace | None`——本命盘上的宫位。
+运限已持有本命盘，因此实际不会是 `None`；只有手工构造、既没绑星盘也没传
+`astrolabe` 的运限对象才拿不到。
+
+**示例**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+print(h.age_palace().name)
+```
+
+**输出**
+
+```text
+田宅
+```
+
+---
+
+## palace
+
+**用途**　取某个运限层级下、按该层级重推的十二宫中的某一宫。
+
+**斗数含义**　大限走到某宫后，以那一宫为「大限命宫」重排十二宫。
+「大限的夫妻宫」问的就是这套重排后的宫位，与本命夫妻宫通常不是同一宫。
+
+**签名**
+
+```python
+def palace(
+    self,
+    name: PalaceName | str,
+    scope: Scope | ScopeLiteral,
+    astrolabe: Astrolabe | None = None,
+) -> Palace | None
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `name` | `str` | 是 | — | 要取的宫名标识 |
+| `scope` | `str` | 是 | — | 在哪个层级的十二宫里找 |
+| `astrolabe` | `Astrolabe \| None` | 否 | `None` | 通常不传 |
+
+**返回值**　`Palace | None`——本命盘上的宫位（同一格宫位在不同层级有不同宫名）。
+层级为 `"origin"` 时即本命十二宫。宫名或层级标识拼错时返回 `None`，不报错。
+
+**示例**
+
+```python
+from x_iztro import PalaceName, Scope
+
+h = chart.horoscope("2025-6-1", 0)
+
+print("大限命宫落在本命的", h.palace(PalaceName.SOUL, Scope.DECADAL).name)
+print("本命命宫是", h.palace(PalaceName.SOUL, Scope.ORIGIN).name)
+```
+
+**输出**
+
+```text
+大限命宫落在本命的 夫妻
+本命命宫是 命宫
+```
+
+**边界与陷阱**
+
+<Callout type="info" title="返回的是本命盘上的那一格">
+`palace("soulPalace", "decadal")` 返回的宫位对象上，`name` 仍是**本命宫名**（例中的夫妻），
+因为它就是本命盘上的那一格。要看该格在大限层级叫什么，查 `h.decadal.palace_names[index]`。
+</Callout>
+
+---
+
+## surround_palaces
+
+**用途**　取某个运限层级下某宫的三方四正。
+
+**签名**
+
+```python
+def surround_palaces(
+    self,
+    name: PalaceName | str,
+    scope: Scope | ScopeLiteral,
+    astrolabe: Astrolabe | None = None,
+) -> SurroundedPalaces | None
+```
+
+**参数**　同 `palace`。
+
+**返回值**　`SurroundedPalaces | None`，判断方法见[三方四正](/zh/docs/python/surpalaces)。
+
+**示例**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+sp = h.surround_palaces(PalaceName.WEALTH, Scope.YEARLY)
+
+print("流年财帛的三方四正以本命", sp.target.name, "为本宫")
+```
+
+**输出**
+
+```text
+流年财帛的三方四正以本命 疾厄 为本宫
+```
+
+---
+
+## has_horoscope_stars / has_one_of_horoscope_stars / not_have_horoscope_stars
+
+**用途**　判断某层级某宫里有没有指定的流耀。
+
+**斗数含义**　流耀是随运限层级产生的一组星：魁钺昌曲禄羊陀马鸾喜。
+它们在不同层级有不同名字——大限层级叫运魁、运钺，流年层级叫流魁、流钺，
+含义相同但作用于各自的时间跨度。
+
+**签名**
+
+```python
+def has_horoscope_stars(self, name, scope, stars: list[str], astrolabe=None) -> bool
+def has_one_of_horoscope_stars(self, name, scope, stars: list[str], astrolabe=None) -> bool
+def not_have_horoscope_stars(self, name, scope, stars: list[str], astrolabe=None) -> bool
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `name` | `str` | 是 | — | 该层级下的宫名标识 |
+| `scope` | `str` | 是 | — | 运限层级 |
+| `stars` | `list[str]` | 是 | — | 流耀标识，须用该层级的名字 |
+| `astrolabe` | `Astrolabe \| None` | 否 | `None` | 通常不传 |
+
+**返回值**
+
+| 方法 | 语义 |
+| --- | --- |
+| `has_horoscope_stars` | 每一颗都在 |
+| `has_one_of_horoscope_stars` | 至少一颗在 |
+| `not_have_horoscope_stars` | 一颗都不在 |
+
+**示例**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+
+print(h.has_horoscope_stars(PalaceName.SOUL, Scope.DECADAL, ["yunlu"]))
+print(h.has_one_of_horoscope_stars(PalaceName.SOUL, Scope.DECADAL, ["yunlu", "yunyang"]))
+print(h.not_have_horoscope_stars(PalaceName.SOUL, Scope.DECADAL, ["yuntuo"]))
+```
+
+**输出**
+
+```text
+False
+False
+True
+```
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="scope 只决定查哪一宫，不决定查哪些星">
+三个方法用 `scope` + `name` 定位到本命盘上的某一格，
+但要比对的星耀集合恒为**大限流耀与流年流耀的并集**，与 `scope` 无关。
+
+因此 `scope` 传 `"monthly"` 时，查的是「流月某宫这一格里有没有大限或流年的流耀」，
+而不是流月自己的流耀——流月、流日、流时三层的流耀不参与这里的比对。
+要按层级取流耀分布，用 `h.monthly.stars` 一类字段，或
+[`star.get_horoscope_star`](/zh/docs/python/star#get_horoscope_star)。
+</Accordion>
+<Accordion title="流耀标识按层级区分">
+大限流耀叫 `yunlu`（运禄）、`yunyang`（运羊）……，流年流耀叫 `liulu`（流禄）、
+`liuyang`（流羊）……，两组标识不同名。由于比对集合恒是这两组的并集，
+`yunlu` 与 `liulu` 在任何 `scope` 下都查得到，只是落宫不同。
+各层级的标识对照见[安星模块](/zh/docs/python/star#get_horoscope_star)，
+枚举形式见 `HoroscopeStar`。
+</Accordion>
+</Accordions>
+
+---
+
+## has_horoscope_mutagen
+
+**用途**　判断某层级某宫里有没有该层级天干引发的四化。
+
+**斗数含义**　每个运限层级有自己的天干，会像生年干一样化出四颗星。
+「大限化禄落在大限财帛」这类判断问的就是这个。
+
+**签名**
+
+```python
+def has_horoscope_mutagen(self, name, scope, mutagen: Mutagen, astrolabe=None) -> bool
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `name` | `str` | 是 | — | 该层级下的宫名标识 |
+| `scope` | `str` | 是 | — | 运限层级 |
+| `mutagen` | `str` | 是 | — | 四化标识 |
+| `astrolabe` | `Astrolabe \| None` | 否 | `None` | 通常不传 |
+
+**返回值**　`bool`。
+
+**示例**
+
+```python
+from x_iztro import Mutagen
+
+h = chart.horoscope("2025-6-1", 0)
+
+print(h.has_horoscope_mutagen(PalaceName.SOUL, Scope.DECADAL, Mutagen.LU))
+print(h.decadal.mutagen)
+```
+
+**输出**
+
+```text
+False
+['太阳', '武曲', '太阴', '天同']
+```
+
+大限干为庚，庚干四化为太阳化禄、武曲化权、太阴化科、天同化忌。
+
+**边界与陷阱**
+
+<Callout type="warn" title="scope 为 origin 时恒为 False">
+本命层级没有「层级天干」这回事——生年四化已经打在星耀自身的 `mutagen_key` 上。
+`has_horoscope_mutagen(name, "origin", m)` 因此直接返回 `False`，
+不代表本命盘上没有这个四化。要查本命四化，用宫位的
+[`has_mutagen`](/zh/docs/python/palace#has_mutagen--not_have_mutagen)。
+</Callout>
+
+<Callout type="info">
+只检查目标宫的**主星与辅星**，不看杂耀。
+</Callout>
+
+---
+
+## scope_item / astrolabe
+
+**用途**　按层级标识取对应的 `HoroscopeItem`，或回到本命盘。
+
+**签名**
+
+```python
+def scope_item(self, scope: Scope | ScopeLiteral) -> HoroscopeItem | None
+def astrolabe(self) -> Astrolabe | None
+```
+
+**返回值**　`scope_item` 在层级为 `"origin"` 时返回 `None`——本命不是运限层级。
+
+**示例**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+
+print(h.scope_item(Scope.DECADAL).name)
+print(h.scope_item(Scope.ORIGIN))
+print(h.astrolabe().solar_date)
+```
+
+**输出**
+
+```text
+大限
+None
+2000-8-16
+```
+
+**边界与陷阱**
+
+<Callout type="info">
+`scope_item` 用于写按层级参数化的通用逻辑，比一串 `if scope == ...` 简洁。
+`HoroscopeItem` 上另有 `palace_index_by_name(name)`，
+把宫名在该层级的十二宫里换成宫位索引，查不到返回 `None`：
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+item = h.scope_item(Scope.DECADAL)
+
+print(item.palace_index_by_name(PalaceName.SOUL))
+print(item.palace_index_by_name(PalaceName.WEALTH))
+print(item.palace_index_by_name("nosuch"))
+```
+
+**输出**
+
+```text
+2
+10
+None
+```
+</Callout>
+
+---
+
+## to_text
+
+**用途**　运限的语义化文本：面向语言模型与人的完整描述，`str(h)` 等价。
+
+**签名**
+
+```python
+def to_text(
+    self,
+    *,
+    knowledge: bool | KnowledgePack | None = None,
+    config: PatternConfig | None = None,
+) -> str
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `knowledge` | `bool \| KnowledgePack \| None` | 否 | `None` | 释义材料：`True` 取排盘语言的内嵌默认包，`KnowledgePack` 用该包；给出时每层事实之后紧跟该层流耀释义与该层视角命中格局的释义（跨层去重），本命星耀不重复 |
+| `config` | `PatternConfig \| None` | 否 | `None` | 格局判定口径，与 `patterns(config)` 同一入参；同时作用于文本的格局节与格局释义。`None` 取默认口径 |
+
+**返回值**　`str`——按星盘排盘语言输出的 Markdown 子集：`# 运限 <日期> (<农历>)` 标题，
+大限（未起运写童限）、小限、流年、流月、流日、流时各一节 `## `，大限与流年展开十二宫表，
+各层带该层视角的四化、流耀与格局行。
+完整格式见[语义化文本](/zh/docs/guide/guides/to-text#格式约定)，释义的插入位置见
+[带释义的文本](/zh/docs/guide/guides/to-text#带释义的文本)。
+
+**示例**
+
+```python
+h = chart.horoscope("2025-1-1", 0)
+
+text = h.to_text(knowledge=True)
+print(len(h.to_text()), len(text))
+print("\n".join(l for l in text.splitlines() if l.startswith("#")))
+```
+
+**输出**
+
+```text
+2457 8458
+# 运限 2025-1-1 (二〇二四年腊月初二)
+## 大限 · 命宫: 本命夫妻 (庚辰)
+## 小限 · 命宫: 本命官禄 · 虚岁 25
+## 流年 · 命宫: 本命夫妻 (甲辰)
+## 流月 · 命宫: 本命仆役 (丁丑)
+## 流日 · 命宫: 本命迁移 (庚午)
+## 流时 · 命宫: 本命迁移 (丙子)
+```
+
+**边界与陷阱**
+
+<Callout type="info">
+脱离星盘单独构造的运限（`horoscope()` 之外的途径）没有排盘上下文，调用抛 `ValueError`。
+格局命中的文本另见 `patterns_to_text`（[格局判定](/zh/docs/python/patterns)）。
+`knowledge=True` 而排盘语言没有内嵌包（目前只有 zh-CN 有）抛 `IztroError`（`invalid_argument`）。
+</Callout>
+
+---
+
+## to_dict / to_json
+
+**用途**　把运限导出成与 JS iztro 字段契约一致的 JSON。
+
+**签名**
+
+```python
+def to_dict(self) -> dict[str, Any]
+def to_json(self, **kwargs: Any) -> str
+```
+
+形状与用法同[星盘的同名方法](/zh/docs/python/astrolabe#to_dict--to_json)：
+`to_dict` 给底层 DTO 的深拷贝，`to_json` 给 JSON 字符串且默认 `ensure_ascii=False`。
+同样不要用 `dataclasses.asdict`——运限持有本命盘的引用，会无限递归。
+
+**示例**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+d = h.to_dict()
+
+print(d["solarDate"], d["decadal"]["heavenlyStem"], d["age"]["nominalAge"])
+print(sorted(d.keys()))
+```
+
+**输出**
+
+```text
+2025-6-1 庚 26
+['age', 'daily', 'decadal', 'hourly', 'lunarDate', 'monthly', 'solarDate', 'yearly']
+```

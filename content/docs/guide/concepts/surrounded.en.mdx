@@ -1,0 +1,258 @@
+---
+title: Surrounded palaces
+description: Why a palace is never read alone, which four palaces make up the surrounded set, how flanking palaces differ from it, and how to get both in each of the three programming languages.
+---
+
+*For: everyone. Code and the predicate table are at the end of the page*
+
+## Why it exists
+
+Reading a palace on its own loses half the information. The convention in Zi Wei Dou Shu is that any
+palace is read together with its **opposite palace** and its two **trine palaces**. Those four
+together are the **surrounded palaces** (三方四正).
+
+The most immediate reason is the empty palace — when a palace holds no major star, tradition says to
+"borrow the stars of the opposite palace". Even when it is not empty, malefics and mutagens anywhere
+in the surrounded set bear on the reading of the palace at the centre.
+
+## Which four palaces
+
+Taking the palace in question as the reference slot, the other three are at fixed offsets:
+
+| Member | Slot | Notes |
+| --- | --- | --- |
+| Target | `i` | The palace being read |
+| Opposite | `i + 6` | Directly across; the most direct influence |
+| Career position | `i + 4` | One of the two trines |
+| Wealth position | `i + 8` | One of the two trines |
+
+Slots are taken modulo 12. On the chart these four positions form a triangle plus a diagonal: 三方
+("three directions") is the trine of three palaces, 四正 ("four squared") is those plus the opposite,
+four in all.
+
+```
+        i+4 (career position)
+         ／      ＼
+        ／        ＼
+      i ──────── i+6 (opposite)
+        ＼        ／
+         ＼      ／
+        i+8 (wealth position)
+```
+
+<Callout>
+"Career position" and "wealth position" are names **relative to the target palace**, not the Career
+and Wealth palaces on the chart. They coincide only when the target is the Soul palace; for any
+other target, only the positional relationship is the same.
+</Callout>
+
+## In code
+
+All three programming languages accept either a palace index or a palace name:
+
+<Tabs items={['Rust', 'Python', 'Go']}>
+<Tab value="Rust">
+
+```rust
+let sp = astrolabe.surrounded_palaces(Palace::Soul).unwrap();
+println!("{:?}", sp.opposite.name);
+```
+
+</Tab>
+<Tab value="Python">
+
+```python
+sp = chart.surrounded_palaces(PalaceName.SOUL)
+sp = chart.surrounded_palaces(soul.index)
+```
+
+</Tab>
+<Tab value="Go">
+
+```go
+sp := chart.SurroundedPalaces(iztro.PalaceSoul)          // by name
+sp = chart.SurroundedPalacesByIndex(soul.Index)          // by index
+```
+
+</Tab>
+</Tabs>
+
+The four members are `target`, `opposite`, `career` (the career position) and `wealth` (the wealth
+position). On the chart used throughout these pages, taking the Soul palace as the target, they
+resolve to `soul`, `surface`, `career` and `wealth`.
+
+### Predicates
+
+The surrounded-palace predicates share names with the single-palace ones, but check the union of the
+four palaces. They are identical across the three programming languages:
+
+| Method | Does |
+| --- | --- |
+| `have(stars)` | Do the four palaces together hold **all** the given stars |
+| `have_one_of(stars)` | Do they hold **any one** of them |
+| `not_have(stars)` | Do they hold **none** of them |
+| `have_mutagen(m)` | Does any of the four carry the given mutagen |
+| `not_have_mutagen(m)` | Do none of the four carry it |
+
+```go
+sp := chart.SurroundedPalaces(iztro.PalaceSoul)
+
+sp.Have(iztro.StarTianfuMaj)                              // Tianfu in the surrounded set
+sp.HaveOneOf(iztro.StarQingyangMin, iztro.StarTuoluoMin)  // Qingyang or Tuoluo in sight
+sp.NotHaveMutagen(iztro.MutagenJi)                        // no Hua Ji in sight
+```
+
+The astrolabe also offers three shortcuts that skip fetching the surrounded set first:
+
+```python
+chart.is_surrounded(PalaceName.SOUL, [MajorStar.TIANFU])
+chart.is_surrounded_one_of(PalaceName.SOUL, [MinorStar.QINGYANG, MinorStar.TUOLUO])
+chart.not_surrounded(PalaceName.SOUL, [MinorStar.HUOXING])
+```
+
+<Callout type="warn" title="Don't confuse have with have_one_of">
+`have` requires **every** star in the list to be present; `have_one_of` requires only one. A
+question like "is a malefic in sight?" almost always wants `have_one_of`.
+</Callout>
+
+### A worked example
+
+Testing whether the Soul palace is "flanked by auspicious stars and clear of malefics":
+
+```python
+from x_iztro.enums import PalaceName, MinorStar
+
+chart = Astro().by_solar("2000-8-16", 2, "female", language="en-US")
+sp = chart.surrounded_palaces(PalaceName.SOUL)
+
+lucky = sp.have_one_of([MinorStar.ZUOFU, MinorStar.YOUBI,
+                        MinorStar.WENCHANG, MinorStar.WENQU])
+clean = sp.not_have([MinorStar.QINGYANG, MinorStar.TUOLUO,
+                     MinorStar.HUOXING, MinorStar.LINGXING])
+
+print(lucky, clean, lucky and clean)
+```
+
+```text
+True False False
+```
+
+This chart has Wenchang and Wenqu in the surrounded set, but it also sees some of Qingyang, Tuoluo,
+Huoxing and Lingxing, so the pattern does not hold.
+
+## Flanking palaces
+
+The **flanking palaces** (夹宫) of a target palace are the two **immediately either side** of it:
+slots `i - 1` and `i + 1`. The twelve palaces form a ring, so slots wrap modulo 12 — the palace
+before slot 0 is slot 11.
+
+```
+… ── i-1 (previous) ── i (the flanked palace) ── i+1 (next) ── …
+```
+
+Flanking and the surrounded set do **not overlap**: none of `i±1` coincides with `i+4`, `i+6` or
+`i+8`.
+
+| | Relation | Members | Slots |
+| --- | --- | --- | --- |
+| Surrounded palaces | Meeting across the chart (会照) | Target, opposite, career position, wealth position | `i` `i+6` `i+4` `i+8` |
+| Flanking palaces | Pressing from either side (相夹) | Previous, next | `i-1` `i+1` |
+
+Meeting is a resonance across the board: it asks which forces answer to one another. Flanking is
+pressure at close quarters: it asks what the palace is hemmed in by. Different images, so the two
+lines of evidence are read separately.
+
+The flanking set **excludes the target**: the surrounded set counts the target as one of its four
+members, while flanking holds only the two neighbours.
+
+### Predicates run on the union of the two
+
+The predicates share names and meaning with the surrounded ones; the range becomes the **union of
+the two flanking palaces**:
+
+| Method | Does |
+| --- | --- |
+| `have(stars)` | Do the two palaces together hold **all** the given stars |
+| `have_one_of(stars)` | Do they hold **any one** of them |
+| `not_have(stars)` | Do they hold **none** of them |
+| `have_mutagen(m)` | Does either palace carry the given mutagen |
+| `not_have_mutagen(m)` | Does neither carry it |
+
+<Callout title="have does not require both stars in the same palace">
+Flanking is one star on each side by definition. `have([Tianji, Tianyue])` is true when Tianji sits
+in the previous palace and Tianyue in the next — the predicate reads the union of the two, not which
+of them a star landed in.
+</Callout>
+
+<Tabs items={['Rust', 'Python', 'Go']}>
+<Tab value="Rust">
+
+```rust
+let f = chart.flanking_palaces(Palace::Soul).unwrap();
+
+println!("{} / {}", translate_palace(f.previous.name, Language::EnUS),
+                    translate_palace(f.next.name, Language::EnUS));
+println!("{}", f.have(&[StarKey::TianjiMaj, StarKey::TianyueMin]));
+println!("{}", f.have_one_of(&[StarKey::QingyangMin, StarKey::TuoluoMin]));
+```
+
+```text
+siblings / parents
+true
+true
+```
+
+</Tab>
+<Tab value="Python">
+
+```python
+f = chart.flanking_palaces(PalaceName.SOUL)
+
+print(f.previous.name, f.next.name)
+print(f.have([MajorStar.TIANJI, MinorStar.TIANYUE]))
+print(f.have_one_of([MinorStar.QINGYANG, MinorStar.TUOLUO]))
+```
+
+```text
+siblings parents
+True
+True
+```
+
+</Tab>
+<Tab value="Go">
+
+```go
+f, _ := chart.FlankingPalaces(iztro.PalaceTarget{Key: iztro.PalaceSoul})
+
+fmt.Println(f.Previous.Name, f.Next.Name)
+fmt.Println(f.Have(iztro.StarTianjiMaj, iztro.StarTianyueMin))
+fmt.Println(f.HaveOneOf(iztro.StarQingyangMin, iztro.StarTuoluoMin))
+```
+
+```text
+siblings parents
+true
+true
+```
+
+</Tab>
+</Tabs>
+
+On this chart the Soul palace is flanked by Siblings (Tianji) and Parents (Tianyue, Tuoluo). Tianji
+and Tianyue sit on opposite sides, so `have` still holds. Of Qingyang and Tuoluo only Tuoluo is
+present, so `have_one_of` is true while `have` is false — 羊陀夹命 does not form.
+
+### What it is used for
+
+Every "XX flanking life" pattern rests on this geometry: two stars in the palaces either side of the
+Soul palace. In the [pattern engine](/en/docs/guide/concepts/patterns) that covers 羊陀夹命, 日月夹命,
+左右夹命, 魁钺夹命, 劫空夹命, 昌曲夹命 and 科权禄夹, and also 紫府夹命 and 金舆扶驾. Why flanking
+and meeting must never be conflated is on the pattern page under
+[Easily misread points](/en/docs/guide/concepts/patterns#easily-misread-points).
+
+Flanking palaces have their own [semantic text](/en/docs/guide/guides/to-text) too: one section per
+side, structured like the surrounded-palace text, with the role headings "Previous Palace" and
+"Next Palace".
+
+Star classes and keys are on [Stars](/en/docs/guide/concepts/stars).

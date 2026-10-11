@@ -1,0 +1,19 @@
+{
+  "title": "Guides",
+  "icon": "Settings",
+  "pages": [
+    "index",
+    "for-non-developers",
+    "to-text",
+    "llm",
+    "knowledge-pack",
+    "reverse",
+    "config",
+    "keys",
+    "i18n",
+    "errors",
+    "plugins",
+    "step-api",
+    "llms-txt"
+  ]
+}

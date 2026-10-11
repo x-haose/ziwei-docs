@@ -1,0 +1,569 @@
+---
+title: Charting entries
+description: by_solar, by_lunar, rearranged and the JSON convenience variants.
+---
+
+Charting is where everything starts: give a birth date, hour and gender, get an `Astrolabe`.
+This page is the full reference for the four charting entry points.
+
+<Callout type="info">
+The entry points that take external input (`by_solar`, `by_lunar`, the two JSON variants and
+`get_horoscope`) all return a `Result`: date format and existence, the solar year range and the hour
+index are validated up front in the core, and invalid input returns an `IztroError` rather than
+panicking. `rearranged` also returns a `Result` (guarding against invalid `raw_dates` from
+deserialized charts); functions whose parameters are all enums with no invalid values
+(`astrolabe_to_text` and friends) return their result directly. Error types are on
+[Error handling](/en/docs/rust/errors).
+</Callout>
+
+---
+
+## by_solar
+
+**Purpose** Chart a natal chart from a solar date.
+
+**Zi Wei meaning** Zi Wei Dou Shu computes on the lunar calendar, but most people only remember their
+solar birthday. This function converts solar to lunar first (including the year, month, day and hour
+pillars) and places the stars from there.
+When the year turns over is governed by `year_divide` — for someone born between lunar New Year and
+the Beginning of Spring, the two settings give different year pillars, which in turn affects the
+mutagens, the soul and body stars, and every year-based star.
+
+**Signature**
+
+```rust
+pub fn by_solar(
+    solar_date: &str,
+    time_index: u8,
+    gender: Gender,
+    fix_leap: bool,
+    language: Language,
+    config: Config,
+) -> Result<Astrolabe, IztroError>
+```
+
+**Parameters**
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `solar_date` | `&str` | Yes | — | Solar date in `YYYY-M-D`; month and day need no zero padding. Years 1583–9999 |
+| `time_index` | `u8` | Yes | — | Hour index 0–12. 0 is the early Zi hour (00:00–01:00), 12 the late Zi hour (23:00–24:00) |
+| `gender` | `Gender` | Yes | — | `Gender::Male` or `Gender::Female`. Sets the direction of the decadal scope and of the Changsheng and Boshi gods |
+| `fix_leap` | `bool` | Yes | — | Whether to correct for lunar leap months. When `true`, days after the fifteenth of a leap month count as the next month (except in the late Zi hour, see below) |
+| `language` | `Language` | Yes | — | Output language; affects every translated field in the DTO. The `*_key` fields are unaffected |
+| `config` | `Config` | Yes | — | Charting configuration: six switches plus custom tables. Use `Config::default()` for the defaults |
+
+**Return value** `Astrolabe` — a complete chart with the twelve palaces, the four pillars, the soul
+and body stars and the five elements class. The field list is on
+[the data model](/en/docs/guide/data-model).
+
+**Example**
+
+```rust
+use x_iztro::*;
+
+let chart = by_solar("2000-8-16", 2, Gender::Female, true, Language::EnUS, Config::default())?;
+
+println!("{} | {} | {}", chart.solar_date, chart.lunar_date, chart.chinese_date);
+println!("{} {} {}", chart.sign, chart.zodiac,
+    translate_five_elements_class(chart.five_elements_class, Language::EnUS));
+println!("soul {} body {}",
+    translate_star(chart.soul, Language::EnUS),
+    translate_star(chart.body, Language::EnUS));
+```
+
+<Callout type="info">
+`five_elements_class`, `soul` and `body` are strongly typed enums, not strings — compare them directly
+in predicates, and run them through `i18n::translate_*` when you need display text in the current
+language.
+</Callout>
+
+**Output**
+
+```text
+2000-8-16 | 二〇〇〇年七月十七 | geng chen - jia shen - bing woo - geng yin
+leo dragon wood 3rd
+soul rebel body scholar
+```
+
+`lunar_date` stays in Chinese numerals in every language: `二〇〇〇年七月十七` is "the 17th day of the
+7th lunar month of 2000". The star names are iztro's en-US vocabulary — `rebel` is Pojun, `scholar`
+is Wenchang.
+
+**Edge cases and pitfalls**
+
+<Accordions>
+<Accordion title="Why the hour index runs 0–12 rather than 0–11">
+The Zi hour straddles midnight, splitting into the early Zi hour (00:00–01:00, belonging to the
+current day) and the late Zi hour (23:00–24:00, belonging to the next). Their day pillars differ and
+Ziwei's starting palace can be a day apart, so they must be distinguished — hence 13 indices.
+The `day_divide` setting can reassign the late Zi hour to the current day; see
+[Config in depth](/en/docs/guide/guides/config).
+</Accordion>
+<Accordion title="fix_leap only bites in a leap month">
+Four conditions must hold together for the month to advance: that lunar month really is a leap month,
+`fix_leap` is `true`, the lunar day is greater than 15, and the hour index is not 12 (the late Zi
+hour). Miss any one and the month index is that of the month itself.
+Only for someone born in a lunar leap month after the fifteenth do `true` and `false` give different
+month indices, which in turn affects Zuofu, Youbi and every month-based star.
+</Accordion>
+<Accordion title="The lower year bound is 1583">
+The Gregorian reform of 1582 left a hole of dates that never existed, and the underlying calendar
+library panics on them. The crate therefore limits solar support to 1583–9999 and returns
+`IztroError::InvalidDate` outside that range.
+</Accordion>
+<Accordion title="language does not affect predicates">
+Every predicate on the chart (`has`, `flies_to`, `with_mutagen` and so on) rests on
+language-independent keys, so charting in a different language changes no predicate result — only
+display fields such as `name`.
+</Accordion>
+</Accordions>
+
+---
+
+## by_lunar
+
+**Purpose** Chart a natal chart from a lunar date.
+
+**Zi Wei meaning** The lunar date is Zi Wei Dou Shu's native input, and this skips the solar
+conversion. Anyone who knows their lunar birthday can use it directly; the result is identical to
+calling `by_solar` with the corresponding solar date.
+
+**Signature**
+
+```rust
+pub fn by_lunar(
+    lunar_date: &str,
+    time_index: u8,
+    gender: Gender,
+    leap: LeapMonth,
+    language: Language,
+    config: Config,
+) -> Result<Astrolabe, IztroError>
+```
+
+**Parameters**
+
+Identical to `by_solar` apart from the following two; `by_solar`'s `fix_leap` is folded into `leap` here.
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `lunar_date` | `&str` | Yes | — | Lunar date in `YYYY-M-D`; write the month as a positive number (leap months are flagged by the next parameter) |
+| `leap` | `LeapMonth` | Yes | — | `NotLeap` — not a leap month; `Leap` — leap month, charted as itself; `LeapFixed` — leap month, and days after the 15th are treated as the next month (iztro `fixLeap`). Flagging a leap month that does not exist in that year falls back to the ordinary month |
+
+**Return value** Same as `by_solar`.
+
+**Example**
+
+```rust
+use x_iztro::*;
+
+let a = by_lunar("2000-7-17", 2, Gender::Female, LeapMonth::NotLeap, Language::EnUS, Config::default())?;
+let b = by_solar("2000-8-16", 2, Gender::Female, true, Language::EnUS, Config::default())?;
+
+assert_eq!(a.solar_date, b.solar_date);
+println!("{}", a.solar_date);
+```
+
+**Output**
+
+```text
+2000-8-16
+```
+
+**Edge cases and pitfalls**
+
+<Callout type="warn" title="The silent fallback for a wrongly flagged leap month is deliberate">
+Flag `leap` as a leap month when that month is not one and the chart is cast for the ordinary month
+without an error (as in iztro). If you need strict validation, confirm the leap month exists for that
+year and month before calling. `LeapMonth::from_flags(is_leap_month, fix_leap)` converts from the
+iztro-style pair of booleans.
+</Callout>
+
+---
+
+## rearranged
+
+**Purpose** Re-anchor the chart on a given stem and branch as the Soul palace and return a new chart;
+the original is untouched.
+
+**Zi Wei meaning** The Zhongzhou school reads one set of birth data as three charts: the heaven chart
+anchors the five elements class on the Soul palace's pillar, the earth chart on the body palace's, the
+human chart on the Spirit palace's. Change the anchoring pillar and the class changes, and with it the
+placement of Ziwei and Tianfu, the twelve palace names, the Changsheng gods and the decadal and age
+scopes are all recomputed.
+This method opens that capability up to **any** stem and branch, not just those three.
+
+**Signature**
+
+```rust
+pub fn rearranged(
+    &self,
+    from_stem: HeavenlyStem,
+    from_branch: EarthlyBranch,
+) -> Result<Astrolabe, IztroError>
+```
+
+**Parameters**
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `from_stem` | `HeavenlyStem` | Yes | — | Stem of the new Soul palace |
+| `from_branch` | `EarthlyBranch` | Yes | — | Branch of the new Soul palace |
+
+**Return value** `Result<Astrolabe, IztroError>`. A chart produced by a charting entry point always
+rearranges successfully; `IztroError::Internal` is returned only when `raw_dates` was deserialized
+or hand-built with a lunar month that does not exist in the month table.
+Recomputed: the Soul and body palaces, the five elements class,
+the fourteen major stars, the twelve palace names, the Changsheng gods, the decadal and age scopes,
+plus Tianshang, Tianshi and Tiancai, which follow the Soul palace. Carried over from the original
+chart: minor stars, the remaining adjective stars, the Boshi gods and the Sui-qian and Jiang-qian
+gods.
+
+On the rearranged chart, `patterns()` / `patterns_with()`, horoscope queries and the to_text
+projection
+all compute from **the rearranged layout** — the five elements class, soul palace and decadal
+ranges follow the new starting stem-branch; the birth data (dates and four pillars) stays unchanged.
+
+**Example**
+
+```rust
+use x_iztro::*;
+
+let chart = by_solar("2000-8-16", 2, Gender::Female, true, Language::EnUS, Config::default())?;
+
+// anchor on the original chart's body palace pillar — equivalent to the earth chart
+let body = chart.palaces.iter().find(|p| p.is_body_palace).unwrap();
+let earth = chart.rearranged(body.heavenly_stem, body.earthly_branch)?;
+
+println!("heaven {} → earth {}",
+    translate_five_elements_class(chart.five_elements_class, Language::EnUS),
+    translate_five_elements_class(earth.five_elements_class, Language::EnUS));
+```
+
+**Output**
+
+```text
+heaven wood 3rd → earth earth 5th
+```
+
+**Edge cases and pitfalls**
+
+<Callout type="info" title="The three standard charts do not need this method">
+For the heaven, earth and human charts just chart with
+`Config::default().with_astro_type(AstroType::Earth)`; both charting entry points support it.
+`rearranged` exists for anchoring on an arbitrary stem and branch.
+</Callout>
+
+<Accordions>
+<Accordion title="Which fields follow the re-anchoring and which do not">
+Following: the Soul palace branch, the body palace branch, the five elements class, the soul star.
+The soul star is looked up by the Soul palace branch, so moving the Soul palace updates it.
+
+Not following: the body star. It is looked up by the **birth-year branch**, independent of where the
+Soul palace sits, and re-anchoring does not change the year of birth.
+
+With `algorithm` set to the Zhongzhou school the soul star is also taken from the year branch, in
+which case it too stays put under re-anchoring.
+</Accordion>
+<Accordion title="The original chart is unaffected">
+`rearranged` returns a new chart and takes `&self` read-only. One original chart can be re-anchored
+into several perspectives in a row without interference.
+</Accordion>
+</Accordions>
+
+---
+
+## by_solar_json / by_lunar_json
+
+**Purpose** Chart and return the DTO as a JSON string directly, sparing the caller the serialization.
+
+**Signature**
+
+```rust
+pub fn by_solar_json(
+    solar_date: &str,
+    time_index: u8,
+    gender: Gender,
+    fix_leap: bool,
+    language: Language,
+    config: Config,
+) -> Result<String, IztroError>
+
+pub fn by_lunar_json(
+    lunar_date: &str,
+    time_index: u8,
+    gender: Gender,
+    leap: LeapMonth,
+    language: Language,
+    config: Config,
+) -> Result<String, IztroError>
+```
+
+**Parameters** Exactly the same as the corresponding charting functions.
+
+**Return value** `String` — the JSON serialization of the [DTO](/en/docs/guide/data-model), with
+camelCase keys, values translated per `language`, plus the language-independent `*Key` fields.
+
+**Example**
+
+```rust
+use x_iztro::*;
+
+let json = by_solar_json("2000-8-16", 2, Gender::Female, true, Language::EnUS, Config::default())?;
+let v: serde_json::Value = serde_json::from_str(&json)?;
+
+println!("{} {}", v["solarDate"], v["palaces"][0]["nameKey"]);
+```
+
+**Output**
+
+```text
+"2000-8-16" "wealthPalace"
+```
+
+**Edge cases and pitfalls**
+
+<Callout type="info">
+These two are just shortcuts for `by_solar(...)?.to_dto()` plus serialization.
+For further analysis on the Rust side use `by_solar` to get an `Astrolabe`, which gives you all the
+query methods; reach for the JSON variants only when handing the result to another process or a
+frontend.
+</Callout>
+
+---
+
+## get_horoscope
+
+**Purpose** Compute the horoscope for a target date, starting from a natal chart.
+
+**Zi Wei meaning** A horoscope layers six scopes — decadal, age, yearly, monthly, daily and hourly —
+onto the natal chart, each with its own starting palace, pillar and scope stars.
+
+**Signature**
+
+```rust
+pub fn get_horoscope(
+    astrolabe: &Astrolabe,
+    solar_date: &str,
+    time_index: u8,
+    language: Language,
+) -> Result<HoroscopeData, IztroError>
+```
+
+**Parameters**
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `astrolabe` | `&Astrolabe` | Yes | — | The natal chart |
+| `solar_date` | `&str` | Yes | — | Target solar date in `YYYY-M-D`, years 1583–9999 |
+| `time_index` | `u8` | Yes | — | Target hour index 0–12 |
+| `language` | `Language` | Yes | — | Output language |
+
+**Return value** `Result<HoroscopeData, IztroError>`. Details on
+[the horoscope object](/en/docs/rust/horoscope).
+
+**Example**
+
+```rust
+use x_iztro::*;
+
+let chart = by_solar("2000-8-16", 2, Gender::Female, true, Language::EnUS, Config::default())?;
+let h = get_horoscope(&chart, "2025-1-1", 0, Language::EnUS)?;
+
+println!("decadal palace index {}, yearly pillar {:?}{:?}",
+    h.decadal.index, h.yearly.heavenly_stem, h.yearly.earthly_branch);
+```
+
+**Output**
+
+```text
+decadal palace index 2, yearly pillar JiaChen
+```
+
+**Edge cases and pitfalls**
+
+<Callout type="info">
+When you want to keep querying off the horoscope (fetching a scope's palaces, testing scope stars),
+use the astrolabe method `chart.horoscope(...)` to get a `HoroscopeRef` — it holds the natal chart
+too, so queries need not be handed the chart again. The free function here returns only the data.
+</Callout>
+
+---
+
+## astrolabe_to_text / horoscope_to_text
+
+**Purpose** Project a chart or a horoscope into semantic text — the chart's facts in
+natural-language form, for a language model or a person. Alongside `serde_json` (machine structure)
+and the translated fields (display), it is the third projection of the same object. The output is a
+Markdown subset (`#` headings, `- label: value` lists, `**bold**` and one narrow palace-overview
+table) that reads fine unrendered.
+
+**Signature** (the `x_iztro::text` module, all re-exported from the crate root; the module also
+holds `palace_to_text` / `surrounded_palaces_to_text` / `patterns_to_text` and their `_with` forms)
+
+```rust
+pub fn astrolabe_to_text(astrolabe: &Astrolabe, lang: Language) -> String
+pub fn astrolabe_to_text_with(astrolabe: &Astrolabe, opts: &TextOptions, lang: Language) -> String
+pub fn horoscope_to_text(
+    astrolabe: &Astrolabe,
+    horoscope: &HoroscopeData,
+    lang: Language,
+) -> String
+pub fn horoscope_to_text_with(
+    astrolabe: &Astrolabe,
+    horoscope: &HoroscopeData,
+    opts: &TextOptions,
+    lang: Language,
+) -> String
+```
+
+Convenience methods that emit in the chart language: `Astrolabe::to_text()`,
+`HoroscopeRef::to_text()`, `PalaceRef::to_text()`, `SurroundedPalaces::to_text()`, each with a
+`to_text_with` taking `&TextOptions`. The free functions' `lang` may differ from the charting
+language: structural labels, star names, hours, zodiac signs, stems and branches and flowing stars
+are all re-translated by key into the target language, byte-identical to a chart cast in that
+language.
+
+**Parameters**
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `astrolabe` | `&Astrolabe` | Yes | — | The natal chart |
+| `horoscope` | `&HoroscopeData` | Yes | — | The result of `get_horoscope` |
+| `opts` | `&TextOptions` | `_with` only | — | Output options; the two without `_with` use `TextOptions::default()`, facts only. See [TextOptions](#textoptions) |
+| `lang` | `Language` | Yes | — | Output language, which switches both the structural labels and the star names |
+
+**Return value** `String`, Markdown text. The natal text: title, basic info, palace-overview
+table, patterns, then the twelve palaces in detail starting from the Soul palace. The horoscope
+text: one section each for the decadal (childhood before the decadals start), age fortune, yearly,
+monthly, daily and hourly scopes, each with its mutagens, patterns and flowing stars, the decadal
+and yearly ones expanded into a twelve-palace table. With a knowledge pack, readings follow the
+facts they belong to.
+
+**Example**
+
+```rust
+use x_iztro::*;
+
+let chart = by_solar("2000-8-16", 2, Gender::Female, true, Language::EnUS, Config::default())?;
+print!("{}", chart.to_text());
+```
+
+**Output**
+
+```text
+# Natal Chart 2000-8-16 Tiger hour female
+
+## Basic Info
+- Solar: 2000-8-16 · Lunar: 二〇〇〇年七月十七 · Hour: Tiger hour (03:00~05:00)
+- Pillars: geng chen - jia shen - bing woo - geng yin · Zodiac: dragon · Sign: leo
+- Five Elements Class: wood 3rd · Soul Star: rebel · Body Star: scholar
+- Soul Palace: woo · Body Palace: xu (career) · Original Palace: chen (spouse)
+- Birth-Year Mutagen: sun [A]→children, warrior [B]→wealth, moon [C]→friends, fortunate [D]→health
+
+## Palace Overview
+| Palace | Major Stars | Minor Stars | Decadal |
+|---|---|---|---|
+| **soul** woo | emperor([+3]) | artist([-3]) | 3-12 |
+| siblings si | advisor([-1]) | — | 13-22 |
+| spouse chen [Original Palace] | marshal([+3]) | helper, impulsive([-3]) | 23-32 |
+| children mao | sun([+3]) [A], sage([+3]) | — | 33-42 |
+| wealth yin | warrior([+1]) [B], minister([+3]) | horse | 43-52 |
+| health chou | fortunate([-2]) [D], advocator([-2]) | assistant, fickle | 53-62 |
+| surface zi | wolf([+2]) | spark([-3]) | 63-72 |
+| friends hai | moon([+3]) [C] | — | 73-82 |
+| career xu [Body Palace] | judge([0]), empress([+3]) | officer | 83-92 |
+| property you | — | ideologue, driven([-3]) | 93-102 |
+| spirit shen | rebel([+1]) | scholar([+1]), money | 103-112 |
+| parents wei | — | aide, tangled([+3]) | 113-122 |
+
+## Patterns
+- **Empress and Minister Facing the Palace** (soul): empress([+3]), minister([+3])
+
+## Palaces
+
+### soul (ren woo) · Decadal 3-12
+- Major Stars: emperor([+3])
+- Minor Stars: artist([-3])
+- Adjective Stars: refined, lucky, intercepted, instigated, considery(Y)
+- Trine & Opposite: Opposite surface · Trine wealth, career
+- Stem ren Flying: sage [A]→children, emperor [B]→soul, officer [C]→career, warrior [D]→wealth
+- Twelve Gods: Changsheng·weak, Boshi·dragon, Suiqian·downcast, Jiangqian·disastery
+- Age Fortune Years: 5, 17, 29, 41, 53, 65, 77, 89, 101, 113
+
+
+(the other eleven palaces follow the same format and are omitted here)
+```
+
+The complete output with a field-by-field walkthrough is on
+[Semantic text](/en/docs/guide/guides/to-text).
+
+This is an addition of x-iztro's beyond iztro, available in all three languages.
+Wiring it to a model is covered on [Docs for AI](/en/docs/guide/guides/llm).
+
+---
+
+## TextOptions
+
+**Purpose** Output options for the to_text family: the source of readings and the pattern
+criteria. By default only the chart's facts are emitted and patterns are judged under the default
+criteria; with a knowledge pack, each palace's facts are followed by readings of that palace's stars
+(same-palace major-star combinations `**A × B (same palace)**: ` first), the pattern list is
+followed by pattern readings (with a `Conditions: ` line), the natal text closes with
+`## Mutagen Notes`, and each horoscope scope carries readings of its flowing stars and patterns
+(deduplicated across scopes). The twelve gods carry no readings.
+
+**Signature** (`x_iztro::text`, re-exported from the crate root)
+
+```rust
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TextOptions<'a> { /* private fields */ }
+
+impl<'a> TextOptions<'a> {
+    pub fn new() -> Self
+    pub fn knowledge(self, pack: &'a KnowledgePack) -> Self
+    pub fn pattern_config(self, config: &'a PatternConfig) -> Self
+    pub fn knowledge_pack(&self) -> Option<&'a KnowledgePack>
+}
+```
+
+**Methods**
+
+| Method | Description |
+| --- | --- |
+| `new()` / `default()` | Facts-only options under the default pattern criteria |
+| `knowledge(&pack)` | Pick readings from `pack` by chart; `pack` is the bundled default pack or a custom pack merged from overlays, and its borrow must outlive the options |
+| `pattern_config(&config)` | Judge patterns under `config`, the same argument as [`patterns_with`](/en/docs/rust/patterns#patterns_with); acts on both the text's pattern section and the pattern readings. Unset means `PatternConfig::default()` |
+| `knowledge_pack()` | The current source of readings; `None` means facts only |
+
+`Copy`, so one value can be handed to any number of `to_text_with` calls. Reading bodies are the
+pack's Markdown verbatim; entry headings (star, pattern and mutagen names) are translated into the
+output language. Selection follows the same rule as
+[`KnowledgePack::for_astrolabe`](/en/docs/rust/knowledge#for_astrolabe--for_horoscope); placement
+and deduplication are on [Text with readings](/en/docs/guide/guides/to-text#text-with-readings).
+
+**Example** (on a zh-CN chart, since the bundled pack is Chinese)
+
+```rust
+let pack = KnowledgePack::builtin(Language::ZhCN).unwrap();
+let opts = TextOptions::new().knowledge(pack);
+
+let plain = chart.to_text();
+let noted = chart.to_text_with(&opts);
+println!("{} {}", plain.chars().count(), noted.chars().count());
+assert!(plain.lines().all(|l| noted.contains(l)));
+
+let positional = PatternConfig { brightness_source: BrightnessSource::Positional, ..PatternConfig::default() };
+let by_position = chart.to_text_with(&opts.pattern_config(&positional));   // pattern section and readings both follow it
+```
+
+**Output**
+
+```text
+3389 20767
+```
+
+The bundled default pack is zh-CN only; `KnowledgePack::builtin` returns `None` for the other
+languages. An English chart needs an explicit pack for readings — a pack's language is not tied to
+the chart's, so an English chart with the Chinese pack gives English headings and Chinese bodies.

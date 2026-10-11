@@ -1,0 +1,764 @@
+---
+title: Horoscope object
+description: The data structures of the six scopes, the three whole-scope lists, plus palace lookups that need not be handed the astrolabe again.
+---
+
+A horoscope projects the natal chart onto a point in time. The same chart shows a different palace
+layout in different years — which is exactly what "the decadal scope has moved to that palace" means.
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+```
+
+`Horoscope` holds the natal chart that produced it, so none of the query methods need the astrolabe
+passed in again. The trailing `astrolabe=None` parameter on every query method is there for the case
+where you hold horoscope data but keep the chart elsewhere; day to day you never pass it.
+
+<Callout type="info">
+The examples on this page all start from an `en-US` natal chart, so the display values in the output
+are the English translations.
+</Callout>
+
+## Fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `solar_date` | `str` | The **target** solar date, as passed in |
+| `lunar_date` | `str` | The target date as a Chinese lunar date string |
+| `decadal` `age` `yearly` `monthly` `daily` `hourly` | See below | The six horoscope scopes |
+
+`solar_date` is the target date, not the birth date; the birth date is on the natal chart, reachable
+as `h.astrolabe().solar_date`.
+
+## The six scopes
+
+| Field | Type | Span | Description |
+| --- | --- | --- | --- |
+| `decadal` | `HoroscopeItem` | Ten years | The decadal scope; the childhood scope for the years before it begins |
+| `age` | `AgeItem` | One year | The age scope, moving one palace per nominal year |
+| `yearly` | `HoroscopeYearly` | One year | The yearly scope, its palace fixed by the year's pillar |
+| `monthly` | `HoroscopeItem` | One month | The monthly scope |
+| `daily` | `HoroscopeItem` | One day | The daily scope |
+| `hourly` | `HoroscopeItem` | One double-hour | The hourly scope |
+
+<Callout type="info" title="The age scope versus the yearly scope">
+Both advance once per year, but they start differently: the age scope starts from the birth-year
+branch and steps forward with the nominal age, while the yearly scope simply asks which palace that
+year's pillar falls in. The two lines are independent, and Zi Wei practice usually reads them
+together.
+</Callout>
+
+### HoroscopeItem
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `index` | `int` | Which palace this scope lands on (a palace index) |
+| `name` | `str` | Display name of the scope, translated into the output language |
+| `name_key` | `str` | Scope key: `decadal` / `childhood` (before the decadals begin) / `turn` (age fortune) / `yearly` / `monthly` / `daily` / `hourly`. Predicate on this, never on the translation |
+| `heavenly_stem` / `heavenly_stem_key` | `str` | Stem of the scope, which determines the mutagens it flies |
+| `earthly_branch` / `earthly_branch_key` | `str` | Branch of the scope |
+| `palace_names` / `palace_name_keys` | `list[str]` | The twelve palace names re-derived with this scope's palace as the Soul palace, indexed by palace index |
+| `mutagen` / `mutagen_star_keys` | `list[str]` | The stars this scope's stem transforms, in the order lu, quan, ke, ji; `mutagen_star_keys` holds the mutated stars' star keys, synonymous with the palace field of the same name |
+| `stars` | `list[list[Star]] \| None` | The scope stars of this layer; `None` for layers that have none |
+
+`AgeItem` and `HoroscopeYearly` both inherit `HoroscopeItem` and each add one field:
+
+| Type | Extra field | Description |
+| --- | --- | --- |
+| `AgeItem` | `nominal_age: int` | The nominal age at that date |
+| `HoroscopeYearly` | `yearly_dec_star: YearlyDecStar` | The yearly Sui-qian and Jiang-qian gods |
+
+```python
+class YearlyDecStar:
+    jiangqian12: list[str]        # translated yearly Jiang-qian gods, indexed by palace index
+    jiangqian12_keys: list[str]   # the matching keys
+    suiqian12: list[str]          # translated yearly Sui-qian gods
+    suiqian12_keys: list[str]     # the matching keys
+```
+
+Because this is inheritance rather than wrapping, the shared fields are reached directly: write
+`h.yearly.heavenly_stem`, with no `.base` layer as on the Rust side.
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+
+print(h.yearly.heavenly_stem, h.yearly.earthly_branch, h.age.nominal_age)
+print(h.yearly.yearly_dec_star.suiqian12[:3])
+print(h.yearly.yearly_dec_star.jiangqian12_keys[:3])
+```
+
+**Output**
+
+```text
+yi si 26
+['blessed', 'sorrowing', 'illness']
+['jiesha', 'zhaisha', 'tiansha']
+```
+
+**Example**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+
+for item in (h.decadal, h.monthly, h.daily, h.hourly):
+    print(f"{item.name} lands on palace {item.index} with pillar {item.heavenly_stem}{item.earthly_branch}")
+
+print("age scope nominal age", h.age.nominal_age)
+print("decadal mutagens", h.decadal.mutagen)
+```
+
+**Output**
+
+```text
+decadal lands on palace 2 with pillar gengchen
+monthly lands on palace 3 with pillar renwoo
+daily lands on palace 8 with pillar xinchou
+hourly lands on palace 8 with pillar wuzi
+age scope nominal age 26
+decadal mutagens ['sun', 'warrior', 'moon', 'fortunate']
+```
+
+---
+
+## The three lists
+
+`decadal_list` / `yearly_list` / `monthly_list` are methods on `Astrolabe`, not on the horoscope object:
+they return a whole scope in one call, sparing you from looping over dates with `horoscope` and
+assembling the result yourself. All three item types inherit `HoroscopeItem`, so the shared fields are
+read directly; each adds its own time coordinates:
+
+| Type | Extra fields | Description |
+| --- | --- | --- |
+| `DecadalListItem` | `palace_name` / `palace_name_key`: `str` | The natal palace this decadal sits in |
+| | `age_range`: `tuple[int, int]` | First and last nominal age, both inclusive |
+| | `year_range`: `tuple[int, int]` | First and last lunar year, both inclusive |
+| `YearlyListItem` | `age`: `int` | The nominal age this year corresponds to |
+| | `year`: `int` | Lunar year |
+| `MonthlyListItem` | `age`: `int` | The nominal age this month falls in |
+| | `year`: `int` | Lunar year |
+| | `month`: `int` | Lunar month, 1 for the first; a leap month shares its number |
+| | `is_leap_month`: `bool` | Whether this item is the leap month |
+| | `part`: `str` | Segment marker; values are in the `MonthPart` enum |
+| | `day_range`: `tuple[int, int]` | The lunar days this segment covers, both inclusive |
+
+`MonthPart` has three values: `NORMAL` for a whole month, `FIRST` for a leap month's first half and
+`SECOND` for its second half.
+
+<Callout type="info" title="The lists use the hour pillar's branch">
+Every item in the three lists is computed from the hour matching the **hour pillar's earthly branch**,
+not the `time_index` passed at charting time. The two differ only for the late zi hour: on a chart
+built with index 12, the hour pillar's branch is zi, so the lists use hour index 0.
+</Callout>
+
+---
+
+## decadal_list
+
+**Purpose** Get all twelve decadals of this chart at once, ordered by when they begin.
+
+**Zi Wei meaning** A decadal is a ten-year step walking the twelve palaces from the starting palace.
+Laid out flat, the line tells you which palace a given stretch of life falls in and which ten years it covers.
+
+**Signature**
+
+```python
+def decadal_list(self) -> list[DecadalListItem]
+```
+
+**Return value** Always 12 items; index 0 is the first decadal. The order follows the starting nominal
+age, not the palace index — decadals run forwards or backwards depending on yin/yang and gender.
+
+**Example**
+
+```python
+for d in chart.decadal_list()[:3]:
+    print(d.palace_name, d.heavenly_stem, d.earthly_branch, d.age_range, d.year_range)
+
+print(len(chart.decadal_list()))
+```
+
+**Output**
+
+```text
+soul ren woo (3, 12) (2002, 2011)
+siblings xin si (13, 22) (2012, 2021)
+spouse geng chen (23, 32) (2022, 2031)
+12
+```
+
+This chart starts its decadals at nominal age 3, with the first one in the Soul palace.
+
+**Edge cases and pitfalls**
+
+<Callout type="info" title="Childhood is not in the list">
+The years before the first decadal begins are the childhood scope, which only appears when you query
+`horoscope` for a specific date (`name_key` is `childhood`). `decadal_list` lists the twelve decadals
+themselves, so every item's `name_key` is `decadal`.
+</Callout>
+
+---
+
+## yearly_list
+
+**Purpose** Get every yearly scope inside one decadal.
+
+**Zi Wei meaning** Fix the decadal, then read year by year — the usual order in which a reading advances.
+A decadal spans ten years, and these are those ten.
+
+**Signature**
+
+```python
+def yearly_list(self, decadal: int | PalaceName | str | None = None) -> list[YearlyListItem]
+```
+
+**Parameters**
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `decadal` | `int \| PalaceName \| str \| None` | Yes | `None` | The decadal's ordinal (`int`, 0 for the first) or the key of the natal palace it sits in |
+
+When both forms address the same decadal they return identical results; pick whichever you already hold.
+
+**Return value** 10 items ordered by nominal age.
+
+**Raises** `IztroError` when no addressing is given, the ordinal is out of range, or the palace name
+cannot be matched.
+
+**Example**
+
+```python
+years = chart.yearly_list(2)
+
+for y in years[:3]:
+    print(y.age, y.year, y.heavenly_stem, y.earthly_branch, "->", y.index)
+
+print(len(years), len(chart.yearly_list("spousePalace")))
+```
+
+**Output**
+
+```text
+23 2022 ren yin -> 0
+24 2023 gui mao -> 1
+25 2024 jia chen -> 2
+10 10
+```
+
+Decadal 2 sits in the spouse palace, so `yearly_list(2)` and `yearly_list("spousePalace")` name the same one.
+
+**Edge cases and pitfalls**
+
+<Callout type="warn" title="The parameter has a default, but omitting it raises">
+`decadal=None` does not mean "the current decadal" — it raises `IztroError`. Silently picking a default
+would turn a forgotten argument into a plausible-looking wrong answer.
+</Callout>
+
+---
+
+## monthly_list
+
+**Purpose** Get every monthly scope of one lunar year.
+
+**Zi Wei meaning** The monthly scope sits below the yearly one and advances month by month. How to treat
+a leap month is a point where schools disagree, so whether to split it is the caller's decision.
+
+**Signature**
+
+```python
+def monthly_list(self, year: int, fix_leap: bool = True) -> list[MonthlyListItem]
+```
+
+**Parameters**
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `year` | `int` | Yes | — | The lunar year |
+| `fix_leap` | `bool` | No | `True` | Whether to split a leap month into two half-month items |
+
+**Return value** The length depends on whether the year has a leap month and on `fix_leap`:
+
+| That lunar year | `fix_leap` | Items | How the leap month is laid out |
+| --- | --- | --- | --- |
+| No leap month | either | 12 | — |
+| Has a leap month | `True` | 14 | Split into `first` (days 1-15) and `second` (day 16 to month end) |
+| Has a leap month | `False` | 13 | One whole-month item with `part` set to `normal` |
+
+The leap month follows the ordinary month of the same number. Each item is computed from the first day of
+its segment (day 16 for a second half).
+
+**Raises** `IztroError` when that lunar year does not exist, or a segment's target date falls outside the
+supported range.
+
+**Example**
+
+```python
+months = chart.monthly_list(2020)
+
+print(len(months))
+for m in months[3:7]:
+    print(m.month, m.is_leap_month, m.part, m.day_range, m.heavenly_stem, m.earthly_branch)
+
+print(len(chart.monthly_list(2020, fix_leap=False)), len(chart.monthly_list(2021)))
+```
+
+**Output**
+
+```text
+14
+4 False normal (1, 30) xin si
+4 True first (1, 15) xin si
+4 True second (16, 29) ren woo
+5 False normal (1, 30) ren woo
+13 12
+```
+
+Lunar 2020 has a leap fourth month. Split apart, its first half shares the pillar of the fourth month
+(xin si) and its second half shares the fifth month's (ren woo) — which is what "the second half of a leap
+month counts as the next month" means. Lunar 2021 has no leap month, so it is always 12 items.
+
+**Edge cases and pitfalls**
+
+<Callout type="warn" title="This fix_leap is unrelated to the charting fix_leap">
+The `fix_leap` on the charting entry decides whether someone born in the second half of a leap month is
+placed by the next month's stars — it changes the natal layout. This one only decides whether this list
+splits the leap month. The two may differ and do not affect each other.
+</Callout>
+
+<Callout type="info" title="A leap month shares its number">
+The leap fourth month also has `month == 4`; `is_leap_month` is what tells them apart. Deduplicating by
+`month` drops the leap month.
+</Callout>
+
+---
+
+## age_palace
+
+**Purpose** Get the palace the age scope occupies this year.
+
+**Zi Wei meaning** The age scope is a line advancing year by year; whichever palace it lands on
+becomes the focus for that year.
+
+**Signature**
+
+```python
+def age_palace(self, astrolabe: Astrolabe | None = None) -> Palace | None
+```
+
+**Parameters**
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `astrolabe` | `Astrolabe \| None` | No | `None` | Usually omitted; the horoscope already holds the natal chart |
+
+**Return value** `Palace | None` — a palace on the natal chart.
+The horoscope already holds the natal chart, so in practice this is never `None`; only a hand-built
+horoscope object bound to no chart and given no `astrolabe` comes up empty.
+
+**Example**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+print(h.age_palace().name)
+```
+
+**Output**
+
+```text
+property
+```
+
+---
+
+## palace
+
+**Purpose** Get one of the twelve palaces as re-derived under a given horoscope scope.
+
+**Zi Wei meaning** Once the decadal scope reaches a palace, the twelve palaces are re-anchored with
+that palace as the "decadal Soul palace". "The decadal Spouse palace" refers to that re-anchored
+naming, and it is usually not the same palace as the natal Spouse palace.
+
+**Signature**
+
+```python
+def palace(
+    self,
+    name: PalaceName | str,
+    scope: Scope | ScopeLiteral,
+    astrolabe: Astrolabe | None = None,
+) -> Palace | None
+```
+
+**Parameters**
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `name` | `str` | Yes | — | The palace-name key to fetch |
+| `scope` | `str` | Yes | — | Which scope's twelve palaces to search |
+| `astrolabe` | `Astrolabe \| None` | No | `None` | Usually omitted |
+
+**Return value** `Palace | None` — a palace on the natal chart (the same cell carries different names
+under different scopes). With `"origin"` as the scope, these are the natal twelve palaces. A
+misspelled palace name or scope key returns `None` rather than raising.
+
+**Example**
+
+```python
+from x_iztro import PalaceName, Scope
+
+h = chart.horoscope("2025-6-1", 0)
+
+print("the decadal Soul palace is the natal", h.palace(PalaceName.SOUL, Scope.DECADAL).name)
+print("the natal Soul palace is", h.palace(PalaceName.SOUL, Scope.ORIGIN).name)
+```
+
+**Output**
+
+```text
+the decadal Soul palace is the natal spouse
+the natal Soul palace is soul
+```
+
+**Edge cases and pitfalls**
+
+<Callout type="info" title="What comes back is the cell on the natal chart">
+On the palace object returned by `palace("soulPalace", "decadal")`, `name` is still the **natal palace
+name** (Spouse in the example), because it is that cell on the natal chart. To see what the cell is
+called at the decadal layer, read `h.decadal.palace_names[index]`.
+</Callout>
+
+---
+
+## surround_palaces
+
+**Purpose** Get the surrounded palaces of a palace under a given horoscope scope.
+
+**Signature**
+
+```python
+def surround_palaces(
+    self,
+    name: PalaceName | str,
+    scope: Scope | ScopeLiteral,
+    astrolabe: Astrolabe | None = None,
+) -> SurroundedPalaces | None
+```
+
+**Parameters** Same as `palace`.
+
+**Return value** `SurroundedPalaces | None`; its predicates are on
+[Surrounded palaces](/en/docs/python/surpalaces).
+
+**Example**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+sp = h.surround_palaces(PalaceName.WEALTH, Scope.YEARLY)
+
+print("the surrounded set of the yearly Wealth palace is anchored on the natal", sp.target.name)
+```
+
+**Output**
+
+```text
+the surrounded set of the yearly Wealth palace is anchored on the natal health
+```
+
+---
+
+## has_horoscope_stars / has_one_of_horoscope_stars / not_have_horoscope_stars
+
+**Purpose** Test whether a palace under a given scope holds the given scope stars.
+
+**Zi Wei meaning** Scope stars are a group produced by each horoscope layer: Tiankui, Tianyue,
+Wenchang, Wenqu, Lucun, Qingyang, Tuoluo, Tianma, Hongluan and Tianxi.
+They carry different names in different layers — Yunkui and Yunyue at the decadal layer, Liukui and
+Liuyue at the yearly layer — with the same meaning applied to their own time span.
+
+**Signature**
+
+```python
+def has_horoscope_stars(self, name, scope, stars: list[str], astrolabe=None) -> bool
+def has_one_of_horoscope_stars(self, name, scope, stars: list[str], astrolabe=None) -> bool
+def not_have_horoscope_stars(self, name, scope, stars: list[str], astrolabe=None) -> bool
+```
+
+**Parameters**
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `name` | `str` | Yes | — | The palace-name key under that scope |
+| `scope` | `str` | Yes | — | The horoscope scope |
+| `stars` | `list[str]` | Yes | — | Scope star keys, which must use that layer's names |
+| `astrolabe` | `Astrolabe \| None` | No | `None` | Usually omitted |
+
+**Return value**
+
+| Method | Meaning |
+| --- | --- |
+| `has_horoscope_stars` | All of them are present |
+| `has_one_of_horoscope_stars` | At least one is present |
+| `not_have_horoscope_stars` | None is present |
+
+**Example**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+
+print(h.has_horoscope_stars(PalaceName.SOUL, Scope.DECADAL, ["yunlu"]))
+print(h.has_one_of_horoscope_stars(PalaceName.SOUL, Scope.DECADAL, ["yunlu", "yunyang"]))
+print(h.not_have_horoscope_stars(PalaceName.SOUL, Scope.DECADAL, ["yuntuo"]))
+```
+
+**Output**
+
+```text
+False
+False
+True
+```
+
+**Edge cases and pitfalls**
+
+<Accordions>
+<Accordion title="scope decides which palace is searched, not which stars">
+The three methods use `scope` plus `name` to locate one cell on the natal chart, but the set of stars
+compared against is always the **union of the decadal scope stars and the yearly scope stars**,
+independent of `scope`.
+
+So passing `"monthly"` as the scope asks "does this monthly palace cell hold any decadal or yearly
+scope star?", not anything about the monthly layer's own scope stars — the monthly, daily and hourly
+layers' stars take no part in this comparison.
+To read a layer's scope-star distribution, use a field such as `h.monthly.stars`, or
+[`star.get_horoscope_star`](/en/docs/python/star#get_horoscope_star).
+</Accordion>
+<Accordion title="Scope star keys are layer-specific">
+The decadal scope stars are named `yunlu`, `yunyang`, …, and the yearly ones `liulu`, `liuyang`, …;
+the two sets of keys differ. Because the comparison set is always the union of both groups, `yunlu`
+and `liulu` are both findable under any `scope`, they simply land in different palaces.
+The per-layer key table is on
+[Star placement](/en/docs/python/star#get_horoscope_star), and the enum form is `HoroscopeStar`.
+</Accordion>
+</Accordions>
+
+---
+
+## has_horoscope_mutagen
+
+**Purpose** Test whether a palace under a given scope carries a mutagen flown by that scope's stem.
+
+**Zi Wei meaning** Every horoscope layer has a stem of its own, and it transforms four stars just as
+the birth-year stem does. A question like "does the decadal lu land in the decadal Wealth palace?" is
+asking about this.
+
+**Signature**
+
+```python
+def has_horoscope_mutagen(self, name, scope, mutagen: Mutagen, astrolabe=None) -> bool
+```
+
+**Parameters**
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `name` | `str` | Yes | — | The palace-name key under that scope |
+| `scope` | `str` | Yes | — | The horoscope scope |
+| `mutagen` | `str` | Yes | — | A mutagen key |
+| `astrolabe` | `Astrolabe \| None` | No | `None` | Usually omitted |
+
+**Return value** `bool`.
+
+**Example**
+
+```python
+from x_iztro import Mutagen
+
+h = chart.horoscope("2025-6-1", 0)
+
+print(h.has_horoscope_mutagen(PalaceName.SOUL, Scope.DECADAL, Mutagen.LU))
+print(h.decadal.mutagen)
+```
+
+**Output**
+
+```text
+False
+['sun', 'warrior', 'moon', 'fortunate']
+```
+
+The decadal stem is geng, and geng sends lu to Taiyang, quan to Wuqu, ke to Taiyin and ji to
+Tiantong.
+
+**Edge cases and pitfalls**
+
+<Callout type="warn" title="Always False when scope is origin">
+The natal layer has no "layer stem" — the birth-year mutagens are already stamped on the stars' own
+`mutagen_key`. `has_horoscope_mutagen(name, "origin", m)` therefore returns `False` outright, which
+does not mean the natal chart lacks that mutagen. For natal mutagens use the palace's
+[`has_mutagen`](/en/docs/python/palace#has_mutagen--not_have_mutagen).
+</Callout>
+
+<Callout type="info">
+Only the **major and minor stars** of the target palace are checked; adjective stars are not.
+</Callout>
+
+---
+
+## scope_item / astrolabe
+
+**Purpose** Get the `HoroscopeItem` for a scope key, or get back to the natal chart.
+
+**Signature**
+
+```python
+def scope_item(self, scope: Scope | ScopeLiteral) -> HoroscopeItem | None
+def astrolabe(self) -> Astrolabe | None
+```
+
+**Return value** `scope_item` returns `None` for the scope `"origin"` — the natal chart is not a
+horoscope layer.
+
+**Example**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+
+print(h.scope_item(Scope.DECADAL).name)
+print(h.scope_item(Scope.ORIGIN))
+print(h.astrolabe().solar_date)
+```
+
+**Output**
+
+```text
+decadal
+None
+2000-8-16
+```
+
+**Edge cases and pitfalls**
+
+<Callout type="info">
+`scope_item` is for writing generic logic parameterized by scope, which is tidier than a chain of
+`if scope == ...`.
+`HoroscopeItem` also carries `palace_index_by_name(name)`, which turns a palace name into a palace
+index within that layer's twelve palaces, returning `None` when there is no match:
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+item = h.scope_item(Scope.DECADAL)
+
+print(item.palace_index_by_name(PalaceName.SOUL))
+print(item.palace_index_by_name(PalaceName.WEALTH))
+print(item.palace_index_by_name("nosuch"))
+```
+
+**Output**
+
+```text
+2
+10
+None
+```
+</Callout>
+
+---
+
+## to_text
+
+**Purpose** The horoscope's semantic text: a complete description for language models and people;
+`str(h)` is equivalent.
+
+**Signature**
+
+```python
+def to_text(
+    self,
+    *,
+    knowledge: bool | KnowledgePack | None = None,
+    config: PatternConfig | None = None,
+) -> str
+```
+
+**Parameters**
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `knowledge` | `bool \| KnowledgePack \| None` | no | `None` | Reading material: `True` takes the bundled default pack for the charting language, a `KnowledgePack` uses that pack; when given, each scope's facts are followed by readings of that scope's flowing stars and of the patterns hit from its perspective (deduplicated across scopes) — natal stars are not repeated |
+| `config` | `PatternConfig \| None` | no | `None` | Pattern criteria, the same argument as `patterns(config)`; acts on both the text's pattern section and the pattern readings. `None` takes the default criteria |
+
+**Return value** `str` — a Markdown subset in the chart's charting language: a
+`# Horoscope <date> (<lunar>)` title, then one `## ` section each for the decadal (childhood before
+the decadals start), age fortune, yearly, monthly, daily and hourly scopes; the decadal and yearly
+sections expand into a twelve-palace table, and every scope carries its mutagen, flowing-star and
+pattern lines from its own perspective. The full format is on
+[Semantic text](/en/docs/guide/guides/to-text#format-conventions); where readings are inserted is on
+[Text with readings](/en/docs/guide/guides/to-text#text-with-readings).
+
+**Example**
+
+```python
+h = chart.horoscope("2025-1-1", 0)
+
+print("\n".join(l for l in h.to_text().splitlines() if l.startswith("#")))
+
+zh = astro.by_solar("2000-8-16", 2, "female").horoscope("2025-1-1", 0)   # the bundled pack is zh-CN
+print(len(zh.to_text()), len(zh.to_text(knowledge=True)))
+```
+
+**Output**
+
+```text
+# Horoscope 2025-1-1 (二〇二四年腊月初二)
+## Decadal Fortune · Soul Palace: Natal spouse (geng chen)
+## Age Fortune · Soul Palace: Natal career · Nominal Age 25
+## Yearly · Soul Palace: Natal spouse (jia chen)
+## Monthly · Soul Palace: Natal friends (ding chou)
+## Daily · Soul Palace: Natal surface (geng woo)
+## Hourly · Soul Palace: Natal surface (bing zi)
+2457 8458
+```
+
+**Edge cases and pitfalls**
+
+<Callout type="info">
+A horoscope constructed detached from a chart (outside `horoscope()`) has no charting context and
+raises `ValueError`. For the pattern hits as text, see `patterns_to_text` on
+[Patterns](/en/docs/python/patterns). `knowledge=True` on a chart whose language has no bundled
+pack (only zh-CN has one) raises `IztroError` (`invalid_argument`).
+</Callout>
+
+---
+
+## to_dict / to_json
+
+**Purpose** Export the horoscope as JSON matching the field contract of JS iztro.
+
+**Signature**
+
+```python
+def to_dict(self) -> dict[str, Any]
+def to_json(self, **kwargs: Any) -> str
+```
+
+Shape and usage are the same as
+[the astrolabe's methods of the same names](/en/docs/python/astrolabe#to_dict--to_json): `to_dict`
+hands back a deep copy of the underlying DTO and `to_json` a JSON string, defaulting to
+`ensure_ascii=False`. Do not reach for `dataclasses.asdict` here either — the horoscope holds a
+reference to the natal chart and would recurse forever.
+
+**Example**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+d = h.to_dict()
+
+print(d["solarDate"], d["decadal"]["heavenlyStem"], d["age"]["nominalAge"])
+print(sorted(d.keys()))
+```
+
+**Output**
+
+```text
+2025-6-1 geng 26
+['age', 'daily', 'decadal', 'hourly', 'lunarDate', 'monthly', 'solarDate', 'yearly']
+```

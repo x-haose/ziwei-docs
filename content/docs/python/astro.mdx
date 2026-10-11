@@ -1,0 +1,405 @@
+---
+title: 排盘入口
+description: Astro 类的排盘方法、重排与语义化文本投影。
+---
+
+排盘是一切的起点：给出生日期、时辰、性别，得到一个 `Astrolabe`。
+
+```python
+from x_iztro import Astro
+
+astro = Astro()
+```
+
+`Astro` 无内部状态，实例化一次到处用；也可以每次调用时临时构造。
+
+<Callout type="info">
+所有入口在入参非法时抛 `IztroError`（继承自 `ValueError`，因此 `except ValueError`
+也接得住）。日期格式与存在性、公历年份范围、时辰索引在核心层前置校验；
+性别、语言、宫名这类字符串取值在绑定层校验。
+异常带 `.code` 给出机器可读分类，详见[错误处理](/zh/docs/python/errors)。
+</Callout>
+
+---
+
+## ChartConfig
+
+排盘配置：六个开关加两张可选的自定义表。冻结的 dataclass，全部字段都有默认值，
+默认值与 JS iztro 一致——`ChartConfig()` 与不传 `config` 等价。
+
+| 字段 | 类型 | 默认 | 取值（对应枚举） |
+| --- | --- | --- | --- |
+| `year_divide` | `str` | `"normal"` | `normal` 正月初一 / `exact` 立春（`YearDivide`） |
+| `horoscope_divide` | `str` | `"normal"` | `normal` 初一 / `exact` 节气（`HoroscopeDivide`） |
+| `age_divide` | `str` | `"normal"` | `normal` 跨年即加 / `birthday` 过生日才加（`AgeDivide`） |
+| `day_divide` | `str` | `"forward"` | `forward` 晚子时归次日 / `current` 归当天（`DayDivide`） |
+| `algorithm` | `str` | `"default"` | `default` / `zhongzhou`（`Algorithm`） |
+| `astro_type` | `str` | `"heaven"` | `heaven` 天盘 / `earth` 地盘 / `human` 人盘（`AstroType`） |
+| `mutagens` | `dict[str, list[str]] \| None` | `None` | 天干标识 → 四颗星标识（禄、权、科、忌） |
+| `brightness` | `dict[str, list[str]] \| None` | `None` | 星耀标识 → 十二项亮度标识，索引 0 为寅宫，空串表示该宫无亮度 |
+
+六个开关的取值语义与流派背景见 [Config 详解](/zh/docs/guide/guides/config)。
+
+**方法**
+
+| 方法 | 说明 |
+| --- | --- |
+| `to_dict() -> dict` | 转成绑定层接受的 camelCase 配置对象；两张表为 `None` 时不出现在结果里 |
+
+**示例**
+
+```python
+from x_iztro import Astro, ChartConfig, AstroType, HeavenlyStem, MajorStar
+
+cfg = ChartConfig(
+    astro_type="earth",
+    mutagens={HeavenlyStem.GENG: [MajorStar.TAIYANG, MajorStar.WUQU,
+                                  MajorStar.TIANFU, MajorStar.TIANTONG]},
+)
+
+print(cfg.to_dict())
+
+chart = Astro().by_solar("2000-8-16", 2, "female", config=cfg)
+print(chart.five_elements_class, chart.config.astro_type)
+print(chart.palace("soulPalace").mutagen_star_keys)
+```
+
+**输出**
+
+```text
+{'yearDivide': 'normal', 'horoscopeDivide': 'normal', 'ageDivide': 'normal', 'dayDivide': 'forward', 'algorithm': 'default', 'astroType': 'earth', 'mutagens': {'gengHeavenly': ['taiyangMaj', 'wuquMaj', 'tianfuMaj', 'tiantongMaj']}}
+土五局 earth
+['tiantongMaj', 'tianjiMaj', 'wenchangMin', 'lianzhenMaj']
+```
+
+地盘的命宫落在原盘身宫（官禄，丙戌），因此宫干四化按丙干取。
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="按天干、按星整表替换">
+`mutagens` 一次替换某个天干的**全部四位**，`brightness` 一次替换某颗星的**全部十二宫**。
+长度是严格校验：四化必须正好四项、亮度必须正好十二项，多一项少一项都抛 `IztroError`。
+未列出的天干与星仍用默认表。
+</Accordion>
+<Accordion title="只收标识，不收译名">
+两张表的键与值都必须是语言无关标识（`"gengHeavenly"`、`"taiyangMaj"`）。
+传 `"庚"`、`"太阳"` 会报 `invalid mutagens key` 一类错误。
+枚举成员是 `StrEnum`，直接当键用即可，`to_dict` 会把它们转成字符串。
+</Accordion>
+<Accordion title="六个开关的枚举成员不会被 to_dict 转成字符串">
+`to_dict` 只对两张表里的键值做 `str()`，六个开关字段原样带出。
+写 `ChartConfig(astro_type=AstroType.EARTH)` 排盘完全正常（`StrEnum` 与字符串等价），
+只是 `to_dict()` 的结果里那一项会印成 `<AstroType.EARTH: 'earth'>`。
+要把配置落成干净的 JSON，开关传字符串字面量，或自己 `str()` 一遍。
+</Accordion>
+<Accordion title="自定义表不回显在 chart.config 上">
+`chart.config` 由输出 DTO 还原，只含六个开关——两张自定义表是排盘**输入**而非结果，
+不进 DTO（这一点与 JS iztro 的字段契约一致）。
+
+但星盘内部保留了你传进来的原件，因此 `chart.rearranged(...)`、`chart.horoscope(...)`、
+to_text 文本投影这些二次计算仍然用得上那两张表，不会静默丢失。
+要把配置记录下来，请在自己的调用侧保存 `ChartConfig` 对象。
+</Accordion>
+</Accordions>
+
+---
+
+## by_solar
+
+**用途**　由公历日期排出本命盘。
+
+**斗数含义**　紫微斗数以农历为算法基础，但绝大多数人只记得公历生日。
+本方法先把公历转农历（含年、月、日、时四柱），再据此安星。
+换年的时点受 `year_divide` 影响——正月初一与立春之间出生的人，
+两种配置会得到不同的年干支，进而影响四化、命主身主与全部年系星。
+
+**签名**
+
+```python
+def by_solar(
+    self,
+    solar_date: str,
+    time_index: TimeIndexType,
+    gender: GenderType,
+    *,
+    fix_leap: bool = True,
+    language: LanguageType = "zh-CN",
+    config: ChartConfig | None = None,
+) -> Astrolabe
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `solar_date` | `str` | 是 | — | 公历日期，格式 `YYYY-M-D`，月日不必补零。支持 1583–9999 年 |
+| `time_index` | `int` | 是 | — | 时辰索引 0–12。0 为早子时（00:00–01:00），12 为晚子时（23:00–24:00） |
+| `gender` | `str` | 是 | — | `"male"` 或 `"female"`。决定大限顺逆与长生、博士十二神的排列方向 |
+| `fix_leap` | `bool` | 否 | `True` | 仅限关键字。是否调整农历闰月。为真时闰月十六日起按下月算（晚子时除外，见下） |
+| `language` | `str` | 否 | `"zh-CN"` | 输出语言，影响所有译名字段；`*_key` 标识字段不受影响 |
+| `config` | `ChartConfig \| None` | 否 | `None` | 排盘配置，`None` 取默认 |
+
+**返回值**　`Astrolabe`——十二宫、四柱、命主身主、五行局俱全的完整星盘。
+
+**示例**
+
+```python
+from x_iztro import Astro
+
+chart = Astro().by_solar("2000-8-16", 2, "female")
+
+print(chart.solar_date, "|", chart.lunar_date, "|", chart.chinese_date)
+print(chart.sign, chart.zodiac, chart.five_elements_class)
+print("命主", chart.soul, "身主", chart.body)
+```
+
+**输出**
+
+```text
+2000-8-16 | 二〇〇〇年七月十七 | 庚辰 甲申 丙午 庚寅
+狮子座 龙 木三局
+命主 破军 身主 文昌
+```
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="时辰索引为什么是 0–12 而不是 0–11">
+子时横跨午夜，分早子时（00:00–01:00，属当日）与晚子时（23:00–24:00，属次日）。
+两者的日柱不同，紫微起宫也可能差一天，因此必须区分，索引才有 13 个。
+不确定时辰索引时用 `utils.time_to_index(hour)` 换算。
+</Accordion>
+<Accordion title="fix_leap 只在闰月生效">
+进位要同时满足四个条件：该农历月确实是闰月、`fix_leap` 为真、农历日大于 15、
+且时辰索引不是 12（晚子时）。四者缺一，月索引就按本月算。
+因此只有农历闰月下半月出生的人，`True` 与 `False` 会得到不同的月索引，
+进而影响左辅右弼与全部月系星。
+</Accordion>
+<Accordion title="language 不影响判断逻辑">
+星盘上所有判断方法（`has`、`flies_to`、`with_mutagen` 等）都基于语言无关标识，
+换语言排盘不会改变任何判断结果，只改变 `name` 一类展示字段。
+</Accordion>
+</Accordions>
+
+---
+
+## by_lunar
+
+**用途**　由农历日期排出本命盘。
+
+**斗数含义**　农历日期是斗数的原生输入，跳过公历转换这一步。
+知道自己农历生日的人直接用它，结果与用对应公历日期调 `by_solar` 完全一致。
+
+**签名**
+
+```python
+def by_lunar(
+    self,
+    lunar_date: str,
+    time_index: TimeIndexType,
+    gender: GenderType,
+    *,
+    is_leap_month: bool = False,
+    fix_leap: bool = True,
+    language: LanguageType = "zh-CN",
+    config: ChartConfig | None = None,
+) -> Astrolabe
+```
+
+**参数**　除以下一项外，其余与 `by_solar` 相同。`gender` 之后的参数只能按关键字传入——
+`is_leap_month` 与 `fix_leap` 相邻，位置传参写反了不报错、盘会静默错一个月。
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `lunar_date` | `str` | 是 | — | 农历日期，格式 `YYYY-M-D`，月份写正数（闰月由下一参数标记） |
+| `is_leap_month` | `bool` | 否 | `False` | 仅限关键字。该农历月是否为闰月。若那一年那个月本来就没有闰月，此参数不生效 |
+
+**返回值**　同 `by_solar`。
+
+**示例**
+
+```python
+a = Astro().by_lunar("2000-7-17", 2, "female")
+b = Astro().by_solar("2000-8-16", 2, "female")
+
+print(a.solar_date, a.solar_date == b.solar_date)
+```
+
+**输出**
+
+```text
+2000-8-16 True
+```
+
+**边界与陷阱**
+
+<Callout type="warn" title="is_leap_month 的静默失效">
+传 `True` 但那个月并非闰月时，参数被静默忽略，不报错。
+如果需要严格校验，调用前先自行确认该年该月确实有闰月。
+</Callout>
+
+---
+
+## get_horoscope
+
+**用途**　以某张本命盘为起点计算目标日期的运限。
+
+**签名**
+
+```python
+def get_horoscope(
+    self,
+    astrolabe: Astrolabe,
+    target_date: str | None = None,
+    target_time_index: TimeIndexType | None = None,
+) -> Horoscope
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `astrolabe` | `Astrolabe` | 是 | — | 本命盘 |
+| `target_date` | `str \| None` | 否 | `None` | 目标公历日期；不传取今天 |
+| `target_time_index` | `int \| None` | 否 | `None` | 目标时辰索引；不传取此刻所属时辰 |
+
+**返回值**　`Horoscope`，持有传入的星盘。详见[运限对象](/zh/docs/python/horoscope)。
+
+**示例**
+
+```python
+chart = Astro().by_solar("2000-8-16", 2, "female")
+h = Astro().get_horoscope(chart, "2025-6-1", 0)
+
+print(h.decadal.heavenly_stem + h.decadal.earthly_branch)
+print(h.yearly.heavenly_stem + h.yearly.earthly_branch)
+```
+
+**输出**
+
+```text
+庚辰
+乙巳
+```
+
+**边界与陷阱**
+
+<Callout type="info" title="星盘上有等价的方法">
+`chart.horoscope("2025-6-1", 0)` 与本方法完全等价，且不必再持有 `Astro` 实例。
+`Astro.get_horoscope` 存在是为了让「所有入口都在一个类上」这种用法也成立。
+</Callout>
+
+---
+
+## rearranged
+
+**用途**　以指定干支为命宫重排本盘，返回新盘；原盘不变。
+
+**斗数含义**　中州派把同一组出生数据看作三张盘：天盘以命宫干支起五行局，
+地盘以身宫干支起，人盘以福德宫干支起。起局的干支一变，五行局就变，
+紫微天府落点、十二宫名、长生十二神、大限小限随之全部重算。
+本方法把这个能力放开到**任意干支**。
+
+**签名**
+
+```python
+def rearranged(self, from_stem: str, from_branch: str) -> Astrolabe
+```
+
+这是 `Astrolabe` 上的方法，不在 `Astro` 类上。
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `from_stem` | `str` | 是 | — | 新命宫的天干标识，`HeavenlyStem` 枚举值域 |
+| `from_branch` | `str` | 是 | — | 新命宫的地支标识，`EarthlyBranch` 枚举值域 |
+
+**返回值**　新的 `Astrolabe`。重算：命宫身宫、五行局、十四主星、十二宫名、
+长生十二神、大限小限、命主星，以及随命宫挪位的天伤、天使、天才。
+沿用原盘：辅星、其余杂耀、博士十二神、岁前与将前十二神、身主星。
+
+重排返回的盘上，`patterns()`、运限查询与 to_text 文本投影都按**重排后的布局**
+计算——五行局、命宫与大限随重排起点变化；出生数据（日期与四柱）保持不变。
+
+**示例**
+
+```python
+chart = Astro().by_solar("2000-8-16", 2, "female")
+
+# 从原盘身宫的干支起盘，等价于地盘
+body = next(p for p in chart.palaces if p.is_body_palace)
+earth = chart.rearranged(body.heavenly_stem_key, body.earthly_branch_key)
+
+print("天盘", chart.five_elements_class, "→ 地盘", earth.five_elements_class)
+```
+
+**输出**
+
+```text
+天盘 木三局 → 地盘 土五局
+```
+
+**边界与陷阱**
+
+<Callout type="info" title="常规三盘不必用这个方法">
+天盘、地盘、人盘用 `ChartConfig(astro_type="earth")` 直接排即可，
+两个排盘入口都支持。`rearranged` 是为「从任意干支起盘」准备的。
+</Callout>
+
+<Accordions>
+<Accordion title="身主星不随重排变化">
+身主星按**出生年支**查表，与命宫位置无关，重排不改变出生年。
+命主星按命宫地支查表，因此会跟着更新。
+</Accordion>
+</Accordions>
+
+---
+
+## 语义化文本（to_text）
+
+**用途**　把星盘或运限投影成语义化文本——盘面事实的自然语言形态，
+喂给大模型或直接给人读。与 `to_dict`/`to_json`（机器结构）、译文字段（展示）
+是同一对象的三种投影。
+
+**签名**　文本投影是对象自己的方法，不在 `Astro` 上：
+
+```python
+chart.to_text()                       # 本命盘；str(chart) 等价
+chart.horoscope("2025-1-1", 0).to_text()   # 运限；str(h) 等价
+chart.palace("命宫").to_text()         # 单宫
+chart.surrounded_palaces("命宫").to_text() # 三方四正
+chart.patterns_to_text()              # 本命格局
+```
+
+**返回值**　`str`——按星盘的排盘语言输出的 Markdown 子集（`#` 标题、`- 标签: 值` 列表、
+十二宫总览窄表）；本命文本带格局节与从命宫起的十二宫详解，运限文本各层带该层视角的
+四化、流耀与格局行。每个 `to_text` 都收 `knowledge=`（`True` 或 `KnowledgePack`），
+给出时释义按盘取材内联在事实之后；也都收 `config=`（`PatternConfig`），给格局节与格局释义的判定口径。
+格式见[语义化文本](/zh/docs/guide/guides/to-text)。
+
+**示例**
+
+```python
+astro = Astro()
+chart = astro.by_solar("2000-8-16", 2, "female")
+
+print("\n".join(chart.to_text().splitlines()[:5]))
+```
+
+**输出**
+
+```text
+# 命盘 2000-8-16 寅时 女
+
+## 基本信息
+- 阳历: 2000-8-16 · 农历: 二〇〇〇年七月十七 · 时辰: 寅时 (03:00~05:00)
+- 四柱: 庚辰 甲申 丙午 庚寅 · 生肖: 龙 · 星座: 狮子座
+```
+
+**边界与陷阱**
+
+<Callout type="info">
+输出语言跟随星盘的 `language`，不单独设置。要英文文本就用英文排盘。
+</Callout>

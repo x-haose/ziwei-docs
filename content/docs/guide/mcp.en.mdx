@@ -1,0 +1,187 @@
+---
+title: Zi Wei Dou Shu, one URL for the model
+description: Hand https://ziwei.x-haose.com/mcp to Cursor or Claude. The model charts and explains. chart and to_text are frozen, field-for-field with iztro v2.6.1.
+icon: Bot
+---
+
+*For: anyone using Cursor or Claude. No library to install, no code to write*
+
+Zi Wei Dou Shu, one URL for the model.
+
+Give it a solar date, an hour and a gender, and the model charts. Ask it to explain the chart in
+plain language and it will. The chart is not something the model computes in its head — it calls
+two frozen tools, and the result matches JS [iztro](https://github.com/SylarLong/iztro) v2.6.1
+field for field, held by 716,314 golden cases. The reading still belongs to the model. This page
+does not write the conclusion for it.
+
+## The URL
+
+```text title="MCP"
+https://ziwei.x-haose.com/mcp
+```
+
+The client only needs this address. No clone, no Python, no server of your own.
+
+Three reasons this one line is safe to hand over:
+
+- **Field-for-field with iztro v2.6.1.** 716,314 golden cases (710k+). Zero tolerated deviations. That is a reproduction target, not a ruling on schools. See [Accuracy](/en/docs/guide/about/accuracy).
+- **A contract you can pin.** The only tools are `chart` and `to_text`. Names, required fields and response shapes are frozen, and written in the second half of this page.
+- **One URL is the whole install.** Streamable HTTP. Cursor and Claude both take the address directly.
+
+<Callout title="Opening it in a browser does not show an article">
+`/mcp` is the endpoint a client connects to, not a docs page. Read this page. Copy the line above.
+</Callout>
+
+## Install in Cursor
+
+User-level config lives in `~/.cursor/mcp.json`. For one project only, use `.cursor/mcp.json` in
+that project. Cursor Settings → MCP opens the same file.
+
+```json title="Cursor"
+{
+  "mcpServers": {
+    "ziwei": {
+      "url": "https://ziwei.x-haose.com/mcp"
+    }
+  }
+}
+```
+
+<Steps>
+<Step>Paste the JSON into the config. If other servers are already there, merge the `"ziwei"` entry into `mcpServers` — do not replace the whole file.</Step>
+<Step>Back in MCP settings, confirm `ziwei` is connected. If it stays dark, reload the window.</Step>
+<Step>Open a new chat and try [the two lines below](#what-to-say-once-it-is-installed).</Step>
+</Steps>
+
+## Install in Claude
+
+Claude's shortest config is the same object with `"type": "http"` added. For Claude Code, put it in
+`.mcp.json` at the project root, or under `mcpServers` in your user config.
+
+```json title="Claude"
+{
+  "mcpServers": {
+    "ziwei": {
+      "type": "http",
+      "url": "https://ziwei.x-haose.com/mcp"
+    }
+  }
+}
+```
+
+Claude Desktop and claude.ai custom connectors take the same URL, `https://ziwei.x-haose.com/mcp`.
+If the connector asks for JSON, use the block above.
+
+<Steps>
+<Step>Save the config, or paste the URL into the connector.</Step>
+<Step>Open a new chat. The tool list should show `chart` and `to_text`, and nothing else.</Step>
+<Step>Try [the two lines below](#what-to-say-once-it-is-installed).</Step>
+</Steps>
+
+## What to say once it is installed
+
+You do not need the parameter names. Say it in plain language and the model fills them in.
+
+| You say | The model calls |
+| --- | --- |
+| "Chart this for me: solar 2000-8-16, Tiger hour, female." | `chart` |
+| "Explain this chart in plain language." | `to_text` |
+
+The first line casts the natal chart for 16 August 2000, Tiger hour, female. Tiger hour is time
+index `2` (03:00–05:00). The model converts that itself.
+
+The second line makes the model fetch the chart as Markdown and explain it from that text.
+`to_text` returns the facts of the chart (with the built-in knowledge pack by default), not a
+finished reading of "how is this person's career". The words are the model's. The numbers are the
+tool's.
+
+Say them as two turns, or in one message.
+
+<Callout type="warn" title="Do not let the model place the stars itself">
+It cannot compute stems, branches and star placements reliably, and the mistakes do not look like
+mistakes. The chart comes only from `chart` / `to_text`. If it starts recalling stars from memory,
+tell it to call the tool again. The longer version of this rule is
+[Letting an AI read the chart](/en/docs/guide/guides/llm).
+</Callout>
+
+## The frozen contract
+
+There are two tools. The required fields and response keys below are the part you can pin: optional
+fields may be added later; these names and keys will not be renamed or removed.
+
+The shortest solar input, the one behind "solar 2000-8-16, Tiger hour, female":
+
+```json title="Shortest chart / to_text input"
+{
+  "calendar": "solar",
+  "date": "2000-8-16",
+  "timeIndex": 2,
+  "gender": "female"
+}
+```
+
+Both tools share this set of birth parameters:
+
+| Field | Required | Values |
+| --- | --- | --- |
+| `calendar` | yes | `solar` or `lunar` |
+| `date` | yes | `YYYY-M-D`, such as `2000-8-16`. Solar years 1583–9999 |
+| `timeIndex` | yes | Integer 0–12. 0 is early Zi, 12 is late Zi. See [the table](#hours) |
+| `gender` | yes | `male` or `female` |
+| `language` | no | Default `zh-CN`. Also `zh-TW`, `en-US`, `ja-JP`, `ko-KR`, `vi-VN` |
+| `fixLeap` | no | Default `true`. Meaningful for solar dates only |
+| `leap` | required for lunar | `notLeap`, `leap` or `leapFixed` |
+| `config` | no | The six boundary switches. Omit for iztro defaults. See [Config](/en/docs/guide/guides/config) |
+
+The default chart language is simplified Chinese. Feeding the model a Chinese chart is more
+reliable than feeding it iztro's English star glosses. See
+[Letting an AI read the chart](/en/docs/guide/guides/llm#feed-the-model-a-chinese-chart).
+
+### `chart`
+
+The chart as JSON. The response is `{ "astrolabe": { ... } }`, aligned with x-iztro's `to_dto()`.
+Contract keys are the language-independent `*_key` fields.
+
+For a horoscope, add a target date. Both fields together, or the response has no `horoscope`:
+
+| Field | Values |
+| --- | --- |
+| `targetDate` | Solar `YYYY-M-D` |
+| `targetTimeIndex` | 0–12, paired with `targetDate` |
+
+### `to_text`
+
+The same birth parameters, and the response is `{ "text": "..." }`. `text` is Markdown. It is not
+the instruction-bearing prompt from `astrolabe_to_prompt`. The format is documented on
+[Semantic text](/en/docs/guide/guides/to-text).
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `knowledge` | `true` | `true` inlines the built-in knowledge pack next to the facts; `false` is facts only |
+| `includeHoroscope` | `false` | When `true`, `targetDate` and `targetTimeIndex` are required. The body is natal chart, then horoscope |
+
+## Hours
+
+`timeIndex` is not a clock hour. Zi is split into a head and a tail, so the index runs 0–12.
+
+| Index | Hour | Clock | Index | Hour | Clock |
+| --- | --- | --- | --- | --- | --- |
+| 0 | early Zi | 00:00–01:00 | 7 | Wei | 13:00–15:00 |
+| 1 | Chou | 01:00–03:00 | 8 | Shen | 15:00–17:00 |
+| 2 | Yin (Tiger) | 03:00–05:00 | 9 | You | 17:00–19:00 |
+| 3 | Mao | 05:00–07:00 | 10 | Xu | 19:00–21:00 |
+| 4 | Chen | 07:00–09:00 | 11 | Hai | 21:00–23:00 |
+| 5 | Si | 09:00–11:00 | 12 | late Zi | 23:00–24:00 |
+| 6 | Wu | 11:00–13:00 | | | |
+
+<Callout type="warn" title="After 23:00 the index is 12, not 0">
+A birth at 23:00–24:00 is late Zi. Say "11pm" or "late Zi", not a bare "Zi".
+The two indexes produce different charts: under the default config, late Zi takes the next day's
+day pillar. See [Config · late Zi hour](/en/docs/guide/guides/config#late-zi-hour-attribution-day_divide).
+</Callout>
+
+## What it does not do
+
+- It does not write the reading. `to_text` is the chart in words. The interpretation is what the model says after reading that text.
+- It does not accept a chart the model placed itself, or stems and branches the model invented.
+- It does not replace embedding the library in your own product. That path is still Rust, Python or Go — see [Getting started](/en/docs/guide/getting-started) and [Letting an AI read the chart](/en/docs/guide/guides/llm).

@@ -1,0 +1,601 @@
+---
+title: 星盘对象
+description: Astrolabe 的字段、定位方法，以及三方四正与夹宫。
+---
+
+`Astrolabe` 是排盘的产物，也是一切查询的入口。它持有十二宫的全部数据，
+以及四柱、命主身主、五行局这些盘级信息。
+
+```go
+chart, _ := iztro.BySolar("2000-8-16", 2, iztro.GenderFemale, true, iztro.LanguageZhCN, nil)
+```
+
+<Callout type="info">
+本页示例统一用 `"zh-CN"` 排盘，因此输出里的展示值都是中文。
+换语言只改这些展示串，`*Key` 标识与所有判断方法的结果不变。
+</Callout>
+
+## 字段
+
+<Accordions>
+<Accordion title="展示字段">
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `Gender` | `string` | 性别译名 |
+| `SolarDate` | `string` | 公历日期，与入参一致 |
+| `LunarDate` | `string` | 农历日期的中文写法 |
+| `ChineseDate` | `string` | 四柱展示串 |
+| `Time` | `string` | 时辰名 |
+| `TimeRange` | `string` | 时辰对应的钟点区间 |
+| `Sign` | `string` | 星座 |
+| `Zodiac` | `string` | 生肖 |
+| `Soul` | `string` | 命主星译名 |
+| `Body` | `string` | 身主星译名 |
+| `FiveElementsClass` | `string` | 五行局译名 |
+| `EarthlyBranchOfSoulPalace` | `string` | 命宫地支译名 |
+| `EarthlyBranchOfBodyPalace` | `string` | 身宫地支译名 |
+
+展示字段随排盘语言翻译。要做判断请用下一组的 `*Key` 字段。
+
+</Accordion>
+<Accordion title="标识字段">
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `GenderKey` | `Gender` | `GenderMale` / `GenderFemale` |
+| `SignKey` | `string` | 星座标识，`aries` … `pisces` |
+| `ZodiacKey` | `string` | 生肖标识，`rat` … `pig` |
+| `SoulKey` | `string` | 命主星标识 |
+| `BodyKey` | `string` | 身主星标识 |
+| `FiveElementsClassKey` | `string` | 五行局标识 |
+| `EarthlyBranchOfSoulPalaceKey` | `string` | 命宫地支标识 |
+| `EarthlyBranchOfBodyPalaceKey` | `string` | 身宫地支标识 |
+
+取值与包里的标识常量一一对应，可直接用 `==` 比较。
+
+</Accordion>
+<Accordion title="结构字段">
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `Palaces` | `[]Palace` | 十二宫，索引 0 为寅宫、11 为丑宫 |
+| `RawDates` | `RawDates` | 结构化的农历生日与四柱干支标识 |
+
+`Palaces` 的索引是**宫位索引**而非宫名顺序：`Palaces[0]` 永远是寅宫，
+命宫可能落在其中任何一格。取命宫用 `chart.Palace(iztro.PalaceSoul)`。
+
+`RawDates` 是 `LunarDate` / `ChineseDate` 两个展示串的数据形式，
+要做日期运算或按干支查表时用它，不必解析中文串：
+
+```go
+type RawDates struct {
+    LunarDate   RawLunarDate   `json:"lunarDate"`
+    ChineseDate RawChineseDate `json:"chineseDate"`
+}
+
+type RawLunarDate struct {
+    LunarYear  int  `json:"lunarYear"`   // 农历年
+    LunarMonth int  `json:"lunarMonth"`  // 农历月 1–12，是否闰月看 IsLeap
+    LunarDay   int  `json:"lunarDay"`    // 农历日 1–30
+    IsLeap     bool `json:"isLeap"`      // 是否闰月
+}
+
+type RawChineseDate struct {
+    Yearly      [2]string `json:"yearly"`      // 年柱译名 [天干, 地支]
+    YearlyKeys  [2]string `json:"yearlyKeys"`  // 年柱标识
+    Monthly     [2]string `json:"monthly"`
+    MonthlyKeys [2]string `json:"monthlyKeys"`
+    Daily       [2]string `json:"daily"`
+    DailyKeys   [2]string `json:"dailyKeys"`
+    Hourly      [2]string `json:"hourly"`
+    HourlyKeys  [2]string `json:"hourlyKeys"`
+}
+```
+
+`RawChineseDate` 另有一个方法 `PillarKeys() [4][2]string`，
+按年、月、日、时的顺序一次给出四柱标识，正好是
+[`TranslateChineseDate`](/zh/docs/go/util#translatechinesedate) 的入参形状：
+
+```go
+rd := chart.RawDates
+
+fmt.Println(rd.LunarDate.LunarYear, rd.LunarDate.LunarMonth,
+    rd.LunarDate.LunarDay, rd.LunarDate.IsLeap)
+fmt.Println(rd.ChineseDate.Yearly, rd.ChineseDate.YearlyKeys)
+fmt.Println(rd.ChineseDate.PillarKeys())
+```
+
+**输出**
+
+```text
+2000 7 17 false
+[庚 辰] [gengHeavenly chenEarthly]
+[[gengHeavenly chenEarthly] [jiaHeavenly shenEarthly] [bingHeavenly wuEarthly] [gengHeavenly yinEarthly]]
+```
+
+</Accordion>
+<Accordion title="排盘上下文">
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `TimeIndex` | `uint8` | 出生时辰索引 |
+| `FixLeap` | `bool` | 排盘时是否修正闰月 |
+| `Language` | `Language` | 盘面语言（`LanguageZhCN` 等） |
+| `Config` | `Config` | 排盘配置，由 DTO 还原的六个开关 |
+
+运限、重排与 Prompt 从这四项重新发起计算，因此不必再传一遍排盘参数。
+
+<Callout type="info" title="Config 字段不回显自定义表">
+`chart.Config` 是从输出 DTO 还原的，只含六个开关；排盘时传进来的自定义四化 / 亮度表
+不在里面。但星盘内部保留了调用方给的原件，因此 `Rearranged`、`Horoscope`、
+Prompt 这些二次计算仍然用得上那两张表——不会静默丢失。
+</Callout>
+
+</Accordion>
+</Accordions>
+
+---
+
+## Palace / PalaceByIndex
+
+**用途**　按宫名、身宫、来因宫或索引取一宫。
+
+**斗数含义**　十二宫是斗数的骨架。命宫定下后，其余十一宫按固定顺序逆时针排开。
+「身宫」是十二宫之一同时被标记的那一宫，代表后天着力处；
+「来因宫」是宫干与生年干相同的那一宫，代表事情的起因。
+
+**签名**
+
+```go
+func (a *Astrolabe) Palace(nameKeyOrName string) *Palace
+func (a *Astrolabe) PalaceByIndex(index int) *Palace
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `nameKeyOrName` | `string` | 是 | — | 宫名标识、`"bodyPalace"`、`"originalPalace"`，或宫名译名 |
+| `index` | `int` | 是 | — | 宫位索引 0–11，0 为寅宫 |
+
+**返回值**　`*Palace`。名字拼错或索引越界时返回 `nil`；
+`"soulPalace"` 一类宫名、`"bodyPalace"`、`"originalPalace"` 只要拼对，
+在任何一张盘上都定位得到。
+
+**示例**
+
+```go
+soul := chart.Palace(iztro.PalaceSoul)
+fmt.Println(soul.Name, soul.HeavenlyStem+soul.EarthlyBranch)
+
+fmt.Println("身宫:", chart.Palace("bodyPalace").Name)
+fmt.Println("来因:", chart.Palace("originalPalace").Name)
+fmt.Println("寅宫:", chart.PalaceByIndex(0).Name)
+```
+
+**输出**
+
+```text
+命宫 壬午
+身宫: 官禄
+来因: 夫妻
+寅宫: 财帛
+```
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="来因宫恒有且仅有一个">
+来因宫要求宫干与生年干相同，且该宫不在子、丑二宫。
+十二宫的天干由五虎遁从寅宫起排，寅到酉这十宫刚好把十天干各走一遍，
+子、丑两宫重复了寅、卯的天干——正因为重复才被排除。
+于是生年干在寅到酉之间必然命中且只命中一次：任何一张盘上来因宫都存在，且唯一。
+身宫同理恒存在。因此 `nil` 只可能来自索引越界或名字拼错。
+</Accordion>
+<Accordion title="名字拼错是静默的">
+`chart.Palace("soulPalce")`（少一个 a）不会报错，只会返回 `nil`，
+下一步取字段就 panic，错误现场离真正的笔误已经隔了一段。
+
+用包里的 `Palace*` 常量可以让编译器与 IDE 当场挡下；
+名字来自外部输入时先过一遍 [`KeyOf`](/zh/docs/go/i18n#keyof) 校验。
+</Accordion>
+<Accordion title="按索引与按名字是两个方法">
+Go 没有联合类型，因此拆成 `Palace`（收字符串）与 `PalaceByIndex`（收整数）两个方法。
+三方四正同理，有 `SurroundedPalaces` 与 `SurroundedPalacesByIndex`。
+</Accordion>
+</Accordions>
+
+---
+
+## Star
+
+**用途**　按标识找到一颗星，并同时取回它所在的宫。
+
+**签名**
+
+```go
+func (a *Astrolabe) Star(keyOrName string) (*Star, *Palace)
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `keyOrName` | `string` | 是 | — | 星耀标识或译名 |
+
+**返回值**　`(*Star, *Palace)`。该星不在这张盘上时两者都为 `nil`。
+
+**示例**
+
+```go
+ziwei, palace := chart.Star(iztro.StarZiweiMaj)
+
+fmt.Println(ziwei.Name, "在", palace.Name)
+fmt.Println("对宫是", ziwei.OppositePalace().Name)
+fmt.Println("亮度", ziwei.Brightness, "四化", ziwei.Mutagen)
+```
+
+**输出**
+
+```text
+紫微 在 命宫
+对宫是 迁移
+亮度 庙 四化
+```
+
+四化为空串表示这颗星没有生年四化。
+
+**边界与陷阱**
+
+<Callout type="info">
+只在主星、辅星、杂耀三组里查找。长生十二神、博士十二神、岁前与将前十二神
+是每宫一个的标记而非星耀列表，用 `palace.Changsheng12Key` 一类字段直接取。
+</Callout>
+
+---
+
+## SurroundedPalaces / SurroundedPalacesByIndex
+
+**用途**　取目标宫的三方四正。
+
+**斗数含义**　三方四正是斗数最常用的取象范围：本宫、对宫（本宫 +6）、
+官禄位（本宫 +4）、财帛位（本宫 +8）。四个宫合起来看，而不只看本宫，
+是因为对宫与三合宫的星耀同样作用于本宫的事。
+
+**签名**
+
+```go
+func (a *Astrolabe) SurroundedPalaces(nameKeyOrName string) *SurroundedPalaces
+func (a *Astrolabe) SurroundedPalacesByIndex(index int) *SurroundedPalaces
+```
+
+**返回值**　`*SurroundedPalaces`，含 `Target` / `Opposite` / `Wealth` / `Career` 四个 `*Palace`。
+`SurroundedPalaces` 在名字拼错时返回 `nil`；`SurroundedPalacesByIndex` 对索引取模，
+因此负数与超过 11 的索引都能正确回绕，只有零值星盘（不足十二宫）才返回 `nil`。
+判断方法见[三方四正](/zh/docs/go/surpalaces)。
+
+**示例**
+
+```go
+sp := chart.SurroundedPalaces(iztro.PalaceSoul)
+
+fmt.Println(sp.Target.Name, sp.Opposite.Name, sp.Wealth.Name, sp.Career.Name)
+fmt.Println("三方四正见紫微:", sp.Have(iztro.StarZiweiMaj))
+```
+
+**输出**
+
+```text
+命宫 迁移 财帛 官禄
+三方四正见紫微: true
+```
+
+---
+
+## IsSurrounded / IsSurroundedOneOf / NotSurrounded
+
+**用途**　直接在星盘上判断某宫的三方四正里有没有指定星耀，省去先取三方四正的一步。
+
+**签名**
+
+```go
+func (a *Astrolabe) IsSurrounded(nameKeyOrName string, stars ...string) bool
+func (a *Astrolabe) IsSurroundedOneOf(nameKeyOrName string, stars ...string) bool
+func (a *Astrolabe) NotSurrounded(nameKeyOrName string, stars ...string) bool
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `nameKeyOrName` | `string` | 是 | — | 宫名标识或译名 |
+| `stars` | `...string` | 是 | — | 星耀标识，可变参数 |
+
+**返回值**
+
+| 方法 | 语义 |
+| --- | --- |
+| `IsSurrounded` | 列出的**每一颗**都在三方四正里 |
+| `IsSurroundedOneOf` | 列出的**至少一颗**在三方四正里 |
+| `NotSurrounded` | 列出的**一颗都不在**三方四正里 |
+
+**示例**
+
+```go
+fmt.Println(chart.IsSurrounded(iztro.PalaceSoul, iztro.StarZiweiMaj, iztro.StarTianxiangMaj))
+fmt.Println(chart.IsSurroundedOneOf(iztro.PalaceSoul, iztro.StarQishaMaj, iztro.StarPojunMaj))
+fmt.Println(chart.NotSurrounded(iztro.PalaceSoul, iztro.StarHuoxingMin))
+```
+
+**输出**
+
+```text
+true
+false
+true
+```
+
+命宫只坐紫微，天相在三方之一的财帛宫，因此第一行为真；
+七杀与破军都不在这四宫内，第二行为假。
+
+**边界与陷阱**
+
+<Callout type="warn" title="不传星耀时的返回值">
+一颗星都不传时，`IsSurrounded` 与 `NotSurrounded` 返回 `true`
+（「所有元素都满足」与「没有元素不满足」对空集都成立），
+`IsSurroundedOneOf` 返回 `false`。
+</Callout>
+
+---
+
+## FlankingPalaces
+
+**用途**　取目标宫的夹宫：盘上紧邻它前后的两宫。
+
+**斗数含义**　「羊陀夹忌」「日月夹命」这类说法看的就是夹宫。
+夹宫与三方四正是两条不重叠的线索：三方四正问的是同一组能量彼此呼应，
+夹宫问的是这一宫左右两侧的处境。
+
+**签名**
+
+```go
+func (a *Astrolabe) FlankingPalaces(target PalaceTarget) (*FlankingPalaces, error)
+func (a *Astrolabe) FlankingPalacesContext(ctx context.Context, target PalaceTarget) (*FlankingPalaces, error)
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `target` | `PalaceTarget` | 是 | — | `Key` 非空时按宫名标识定位（另接受 `PalaceBody` / `PalaceOriginal`），否则按 `Index` 取宫 |
+
+**返回值**　`*FlankingPalaces`，两个 `*Palace` 字段：
+
+| 字段 | 相对目标宫 | 说明 |
+| --- | --- | --- |
+| `Previous` | -1 | 前一宫 |
+| `Next` | +1 | 后一宫 |
+
+十二宫首尾相连，索引对 12 回绕：第 0 宫的前一宫是第 11 宫。
+两个字段都是本盘上的宫位，`Palace` 的飞化、三方四正等关系查询照常可用。
+
+五个判断方法与[三方四正](/zh/docs/go/surpalaces)同名同义，只是作用范围换成这两宫：
+
+| 方法 | 语义 |
+| --- | --- |
+| `Have(stars ...string) bool` | 两宫合起来含列表中每一颗 |
+| `NotHave(stars ...string) bool` | 两宫一颗都不含 |
+| `HaveOneOf(stars ...string) bool` | 两宫合起来至少含一颗 |
+| `HaveMutagen(mutagenKey string) bool` | 两宫中有任一宫带该生年四化 |
+| `NotHaveMutagen(mutagenKey string) bool` | 两宫都不带 |
+
+星耀是可变参数，既可以写 `StarZiweiMaj` 这些常量，也可以写当前语言的星名。
+
+**示例**
+
+```go
+f, _ := chart.FlankingPalaces(iztro.PalaceTarget{Key: iztro.PalaceSoul})
+
+fmt.Println(f.Previous.Name, "/", f.Next.Name)
+fmt.Println(f.Have(iztro.StarTianjiMaj, iztro.StarTuoluoMin))
+fmt.Println(f.HaveOneOf(iztro.StarHuoxingMin))
+
+w, _ := chart.FlankingPalaces(iztro.PalaceTarget{Key: iztro.PalaceWealth})
+fmt.Println(w.Previous.Name, "/", w.Next.Name)
+fmt.Println(w.HaveMutagen(iztro.MutagenLu), w.HaveMutagen(iztro.MutagenJi))
+```
+
+**输出**
+
+```text
+兄弟 / 父母
+true
+false
+疾厄 / 子女
+true true
+```
+
+命宫在午，夹它的是兄弟（巳）与父母（未）。天机坐兄弟、陀罗坐父母，分处两宫，
+`Have` 仍然成立；火星坐夫妻，不在这两宫之内，因此 `HaveOneOf` 为 `false`。
+财帛在寅，夹它的疾厄坐天同、子女坐太阳，这张盘生年干庚使太阳化禄、天同化忌，
+于是禄与忌两问都为 `true`。
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="判定在两宫合计的集合上做">
+`Have(A, B)` 问的是「A 和 B 都出现在这两宫里」，不要求它们同在其中一宫。
+要单看某一侧，直接对 `f.Previous` / `f.Next` 调宫位的
+[`Has`](/zh/docs/go/palace#has--nothave--hasoneof)。
+</Accordion>
+<Accordion title="没有「排在边上所以缺一侧」的宫">
+索引对 12 回绕，十二宫每一宫都有完整的前后两宫。
+</Accordion>
+</Accordions>
+
+---
+
+## Horoscope / HoroscopeNow
+
+**用途**　以本盘为起点计算目标日期的运限。
+
+**签名**
+
+```go
+func (a *Astrolabe) Horoscope(targetDate string, targetTimeIndex uint8) (*Horoscope, error)
+func (a *Astrolabe) HoroscopeNow() (*Horoscope, error)
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `targetDate` | `string` | 是 | — | 目标公历日期，格式 `YYYY-M-D` |
+| `targetTimeIndex` | `uint8` | 是 | — | 目标时辰索引 0–12，决定流时 |
+
+`HoroscopeNow` 取本地时钟的当前日期与当前时辰，无参数。
+
+**返回值**　`*Horoscope`——持有本盘的运限对象，六个层级的宫位查询不必再传星盘。
+详见[运限对象](/zh/docs/go/horoscope)。
+
+**示例**
+
+```go
+h, _ := chart.Horoscope("2025-6-1", 0)
+
+fmt.Println("大限", h.Decadal.HeavenlyStem+h.Decadal.EarthlyBranch)
+fmt.Println("流年", h.Yearly.HeavenlyStem+h.Yearly.EarthlyBranch)
+```
+
+**输出**
+
+```text
+大限 庚辰
+流年 乙巳
+```
+
+---
+
+## ToText / PalaceToText / SurroundedPalacesToText
+
+**用途**　星盘、单宫或三方四正的语义化文本：面向语言模型与人的完整描述。
+
+**签名**
+
+```go
+func (a *Astrolabe) ToText() (string, error)
+func (a *Astrolabe) PalaceToText(target PalaceTarget) (string, error)
+func (a *Astrolabe) SurroundedPalacesToText(target PalaceTarget) (string, error)
+```
+
+各有 `Context` 变体。`PalaceTarget` 的 `Key` 非空时按宫名标识定位
+（`PalaceSoul` 等常量，另接受 `PalaceBody` / `PalaceOriginal`），
+否则按 `Index`（0–11）取宫。按排盘语言输出，
+完整格式见[语义化文本](/zh/docs/guide/guides/to-text)。
+
+**示例**
+
+```go
+text, _ := chart.PalaceToText(iztro.PalaceTarget{Key: iztro.PalaceSoul})
+
+fmt.Println(strings.Split(text, "\n")[0])
+```
+
+**输出**
+
+```text
+### 命宫 (壬午) · 大限 3-12
+```
+
+单宫文本就是本命文本「十二宫」节里该宫的段落；三方四正文本以 `## 命宫 三方四正` 起，
+下接本宫、对宫、财帛位、官禄位四段，每段标题带角色前缀（`### 本宫 · 命宫 (壬午) · 大限 3-12`），事实行与单宫文本一致。格局文本见 `PatternsToText`（[格局判定](/zh/docs/go/patterns)）。
+
+---
+
+## ToTextWith / PalaceToTextWith / SurroundedPalacesToTextWith
+
+**用途**　对应 `ToText` 的文本，按 `opts` 带上知识包里的释义：每宫事实行之后紧跟该宫星耀的释义
+（`**星名(亮度)化X**: 正文`，同宫主星的组合解读 `**A × B (同宫)**: ` 放最前；十二神不释义），
+格局列表之后紧跟格局释义（含 `成立条件: ` 段），本命文本末尾另有 `## 四化释义`。
+
+**签名**
+
+```go
+func (a *Astrolabe) ToTextWith(opts TextOptions) (string, error)
+func (a *Astrolabe) PalaceToTextWith(target PalaceTarget, opts TextOptions) (string, error)
+func (a *Astrolabe) SurroundedPalacesToTextWith(target PalaceTarget, opts TextOptions) (string, error)
+```
+
+**参数**
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `target` | `PalaceTarget` | 同 `PalaceToText` |
+| `opts` | [`TextOptions`](/zh/docs/go/knowledge#textoptions) | 输出选项。`Knowledge` 字段给释义材料来源：`BuiltinKnowledge()` 取盘语言的内嵌默认包，`KnowledgeFrom(pack)` 用给定的包；`PatternConfig` 字段给格局判定口径，同时作用于格局节与格局释义；零值 `TextOptions{}` 等同不带 `With` 的方法 |
+
+各有 `Context` 变体。释义的插入位置与去重规则见[带释义的文本](/zh/docs/guide/guides/to-text#带释义的文本)。
+
+**示例**
+
+```go
+plain, _ := chart.ToText()
+text, _ := chart.ToTextWith(iztro.TextOptions{Knowledge: iztro.BuiltinKnowledge()})
+
+fmt.Println(utf8.RuneCountInString(plain), utf8.RuneCountInString(text))
+var heads []string
+for _, l := range strings.Split(text, "\n") {
+    if strings.HasPrefix(l, "## ") {
+        heads = append(heads, l)
+    }
+}
+fmt.Println(strings.Join(heads, " "))
+```
+
+**输出**
+
+```text
+3389 20767
+## 基本信息 ## 十二宫总览 ## 格局 ## 十二宫 ## 四化释义
+```
+
+两份文本的 `## ` 节只差末尾的「四化释义」：释义不另起节，而是插在各宫与格局之后。
+
+**边界与陷阱**
+
+<Callout type="warn">
+`BuiltinKnowledge()` 用在没有内嵌包的语言（目前只有 zh-CN 有）的盘上返回 `ErrInvalidArgument`，
+不会静默退回无释义；英文盘用 `KnowledgeFrom(pack)` 显式给包。
+</Callout>
+
+---
+
+## 与 JSON 的关系
+
+`Astrolabe` 及其下的所有类型都带 `json` 标签，标签名与 JS iztro 的字段契约一致。
+因此 `json.Marshal(chart)` 直接就是可以交给前端或别的进程的 DTO：
+
+```go
+b, err := json.Marshal(chart)
+if err != nil {
+    log.Fatal(err)
+}
+
+var v map[string]any
+_ = json.Unmarshal(b, &v)
+
+fmt.Println(v["solarDate"], v["genderKey"], v["timeIndex"])
+fmt.Println(v["palaces"].([]any)[4].(map[string]any)["nameKey"])
+```
+
+**输出**
+
+```text
+2000-8-16 female 2
+soulPalace
+```
+
+<Callout type="info">
+`Config` 里的自定义四化与亮度表不进 JSON——它们是排盘**输入**而非结果，
+回显会破坏与 JS iztro 的字段契约。
+</Callout>

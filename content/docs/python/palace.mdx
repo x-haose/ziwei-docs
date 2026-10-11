@@ -1,0 +1,499 @@
+---
+title: 宫位对象
+description: Palace 的字段，以及星耀判断、空宫判断与飞星族的全部方法。
+---
+
+宫位是斗数分析的主战场。`chart.palace(...)` 返回 `Palace`，
+它既持有本宫数据，也能回溯所属星盘、对宫与三方四正。
+
+```python
+soul = chart.palace("soulPalace")
+```
+
+<Callout type="info">
+本页示例统一用默认的 `zh-CN` 排盘，因此输出里的展示值都是中文。
+</Callout>
+
+## 字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `index` | `int` | 宫位索引 0–11，0 为寅宫 |
+| `name` / `name_key` | `str` | 宫名译名 / 标识 |
+| `is_body_palace` | `bool` | 是否身宫 |
+| `is_original_palace` | `bool` | 是否来因宫（宫干与年干相同且不在子丑二宫） |
+| `heavenly_stem` / `heavenly_stem_key` | `str` | 宫干，决定本宫飞出的四化 |
+| `earthly_branch` / `earthly_branch_key` | `str` | 宫支，由索引固定：0 为寅、11 为丑 |
+| `major_stars` | `list[Star]` | 十四主星中落在本宫的，按安放顺序 |
+| `minor_stars` | `list[Star]` | 十四辅星中落在本宫的 |
+| `adjective_stars` | `list[Star]` | 杂耀 |
+| `changsheng12` / `changsheng12_key` | `str` | 长生十二神，每宫恰好一个 |
+| `boshi12` / `boshi12_key` | `str` | 博士十二神 |
+| `jiangqian12` / `jiangqian12_key` | `str` | 将前十二神 |
+| `suiqian12` / `suiqian12_key` | `str` | 岁前十二神 |
+| `decadal` | `Decadal` | 大限：岁数区间与宫干支 |
+| `ages` | `list[int]` | 小限经过本宫的虚岁列表 |
+| `mutagen_star_keys` | `list[str]` | 本宫**宫干**化出的四颗星标识，顺序为禄、权、科、忌 |
+
+<Callout type="info" title="四组十二神与三组星耀的区别">
+主星、辅星、杂耀是**列表**，一宫可以有零到多颗。
+长生、博士、将前、岁前十二神是**每宫恰好一个**的标记，十二宫刚好排满一轮，
+因此是单值字段而不是列表。
+</Callout>
+
+<Callout type="info" title="mutagen_star_keys 是宫干四化，不是生年四化">
+它由**排盘时生效的**四化表算得——自定义四化表（`ChartConfig(mutagens=...)`）
+会反映在这里，飞星族方法读的正是它。
+生年四化是打在星耀自身 `mutagen_key` 字段上的标记，两者不是一回事。
+</Callout>
+
+---
+
+## has / not_have / has_one_of
+
+**用途**　判断本宫坐了哪些星。
+
+**斗数含义**　星耀落宫是斗数的基本盘面信息。「命宫坐紫微天相」即
+`has(["ziweiMaj", "tianxiangMaj"])`。查找范围覆盖主星、辅星、杂耀三组。
+
+**签名**
+
+```python
+def has(self, stars: list[str]) -> bool
+def not_have(self, stars: list[str]) -> bool
+def has_one_of(self, stars: list[str]) -> bool
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `stars` | `list[str]` | 是 | — | 星耀标识列表；也接受**当前排盘语言**下的星名 |
+
+**返回值**
+
+| 方法 | 语义 |
+| --- | --- |
+| `has` | 列表中每一颗都在本宫 |
+| `not_have` | 列表中一颗都不在本宫 |
+| `has_one_of` | 列表中至少一颗在本宫 |
+
+**示例**
+
+```python
+from x_iztro import MajorStar, MinorStar
+
+soul = chart.palace("soulPalace")
+
+print(soul.has([MajorStar.ZIWEI, MajorStar.TIANXIANG]))
+print(soul.has_one_of([MajorStar.QISHA, MajorStar.ZIWEI]))
+print(soul.not_have([MinorStar.HUOXING, MinorStar.LINGXING]))
+```
+
+**输出**
+
+```text
+False
+True
+True
+```
+
+这张盘的命宫只坐紫微，天相落在财帛宫，因此要求两颗都在的 `has` 为假。
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="空列表的返回值">
+空列表下 `has` 与 `not_have` 返回 `True`，`has_one_of` 返回 `False`。
+</Accordion>
+<Accordion title="星名拼错是静默的">
+比对的是「本宫全部星耀的标识与译名」这个集合，比不中就是没有——
+`soul.has(["ziweiMj"])` 返回 `False` 而不报错，看起来跟「命宫没有紫微」一模一样。
+
+外部输入的星名先过一遍枚举构造函数就能当场发现：
+`MajorStar("ziweiMj")` 抛 `ValueError`。写死在代码里的用枚举成员，靠 IDE 补全。
+</Accordion>
+</Accordions>
+
+---
+
+## has_mutagen / not_have_mutagen
+
+**用途**　判断本宫有没有某种四化。
+
+**斗数含义**　本命四化由**生年干**决定，标记打在对应的星上。
+一宫「有化禄」意味着这宫里坐着的某颗星被生年干化了禄。
+注意这与飞星不同——飞星看的是宫干，本处看的是星上已有的标记。
+
+**签名**
+
+```python
+def has_mutagen(self, mutagen: Mutagen) -> bool
+def not_have_mutagen(self, mutagen: Mutagen) -> bool
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `mutagen` | `str` | 是 | — | `"sihuaLu"` / `"sihuaQuan"` / `"sihuaKe"` / `"sihuaJi"` |
+
+**返回值**　`bool`。只扫描 `major_stars` 与 `minor_stars`，**不看杂耀**。
+
+**示例**
+
+```python
+from x_iztro import Mutagen
+
+children = chart.palace("childrenPalace")
+
+print("子女宫有化禄:", children.has_mutagen(Mutagen.LU))
+print("子女宫无化忌:", children.not_have_mutagen(Mutagen.JI))
+```
+
+**输出**
+
+```text
+子女宫有化禄: True
+子女宫无化忌: True
+```
+
+**边界与陷阱**
+
+<Callout type="warn" title="不扫杂耀">
+`has_mutagen` 只看主星与辅星上的四化标记，杂耀即使带标记也不计入（复刻 iztro 的行为）。
+生年四化只会落在十四主星与部分辅星上，因此实际盘面上两种口径通常没有差别。
+</Callout>
+
+---
+
+## is_empty
+
+**用途**　判断本宫是否空宫。
+
+**斗数含义**　「空宫」指没有十四主星坐守的宫。空宫要借对宫主星来看，
+是斗数里一个很常见的判断分支。辅星与杂耀默认不影响空宫的成立。
+
+**签名**
+
+```python
+def is_empty(self, exclude_stars: list[str] | None = None) -> bool
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `exclude_stars` | `list[str] \| None` | 否 | `None` | 追加计入的星耀：本宫无主星、但坐了其中任一颗时，同样**不算**空宫 |
+
+**返回值**　`bool`。判定顺序是：先看有无主星，有则不空；再看 `exclude_stars`，命中则不空；都不满足才是空宫。
+
+**示例**
+
+```python
+parents = chart.palace("parentsPalace")
+print("父母宫空宫:", parents.is_empty())
+print("仆役宫空宫:", chart.palace("friendsPalace").is_empty())
+
+# 父母宫无主星，但坐了陀罗——把陀罗也计入后就不算空宫
+print("父母宫计入陀罗:", parents.is_empty(["tuoluoMin"]))
+```
+
+**输出**
+
+```text
+父母宫空宫: True
+仆役宫空宫: False
+父母宫计入陀罗: False
+```
+
+这张盘只有父母、田宅两宫无主星。仆役宫坐太阴，因此不算空宫。
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="参数名容易读反">
+`exclude_stars` 不是「判断时忽略这些星」，而是「这些星也算数」。
+本宫已有主星时它完全不起作用——有主星就直接不是空宫，不再看这个列表。
+</Accordion>
+<Accordion title="只看主星">
+不传 `exclude_stars` 时只检查 `major_stars`。一宫辅星杂耀满座但没有主星，仍然是空宫。
+</Accordion>
+</Accordions>
+
+---
+
+## flies_to / flies_one_of_to / not_fly_to
+
+**用途**　判断本宫宫干的四化是否飞入目标宫。
+
+**斗数含义**　飞星派的核心手法。每个宫位有自己的宫干，宫干按四化表决定
+哪四颗星化禄、权、科、忌。若被化的那颗星恰好坐在目标宫，就叫「本宫化 X 入目标宫」。
+「命宫化禄入财帛」表达的是命宫这件事的顺遂落在财帛上。
+
+**签名**
+
+```python
+def flies_to(self, target: Palace | int | str, mutagens: Mutagen | list[Mutagen]) -> bool
+def flies_one_of_to(self, target: Palace | int | str, mutagens: Mutagen | list[Mutagen]) -> bool
+def not_fly_to(self, target: Palace | int | str, mutagens: Mutagen | list[Mutagen]) -> bool
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `target` | `Palace \| int \| str` | 是 | — | 目标宫：宫位对象、索引、宫名、`"bodyPalace"` 或 `"originalPalace"` |
+| `mutagens` | `str \| list[str]` | 是 | — | 要检查的四化，单个或列表 |
+
+**返回值**
+
+| 方法 | 语义 |
+| --- | --- |
+| `flies_to` | 列出的四化**全部**飞入目标宫 |
+| `flies_one_of_to` | 列出的四化**至少一个**飞入目标宫 |
+| `not_fly_to` | 列出的四化**一个都不**飞入目标宫 |
+
+**示例**
+
+```python
+from x_iztro import Mutagen, PalaceName
+
+soul = chart.palace("soulPalace")
+
+print("命宫化禄入财帛:", soul.flies_to(PalaceName.WEALTH, Mutagen.LU))
+print("命宫化禄或忌入迁移:", soul.flies_one_of_to(PalaceName.SURFACE, [Mutagen.LU, Mutagen.JI]))
+print("命宫不化权入子女:", soul.not_fly_to(PalaceName.CHILDREN, Mutagen.QUAN))
+```
+
+**输出**
+
+```text
+命宫化禄入财帛: False
+命宫化禄或忌入迁移: False
+命宫不化权入子女: True
+```
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="空的四化列表：flies_to 为假，另两个为真">
+`mutagens` 传空列表时 `flies_to` 返回 `False`，
+`flies_one_of_to` 与 `not_fly_to` 返回 `True`。
+
+这与「空集上全称命题为真」的直觉相反，但复刻的是 iztro 的行为：
+`flies_to` 先算出要找的星，一颗都没有就直接判假。传空通常是调用方的疏漏。
+</Accordion>
+<Accordion title="目标宫定位不到时三个方法都返回 False">
+`target` 写成越界索引或拼错的宫名时，三个方法一律返回 `False`，
+包括语义上「否定」的 `not_fly_to`——定位失败不等于「没飞进去」。
+</Accordion>
+<Accordion title="自定义四化表会改变结果">
+`ChartConfig(mutagens=...)` 换掉某个天干的四化表后，宫干落在该天干的宫飞出的星随之改变。
+飞星族方法读的是排盘时生效的表，不是内置默认表。
+</Accordion>
+<Accordion title="飞入自己宫叫自化">
+目标宫写成本宫时，语义上是「自化」。此时用 `self_mutaged` 一族更直观。
+</Accordion>
+</Accordions>
+
+---
+
+## self_mutaged / self_mutaged_one_of / not_self_mutaged
+
+**用途**　判断本宫是否自化。
+
+**斗数含义**　自化指本宫宫干化出的星恰好就坐在本宫。
+含义上是「自己把自己的能量释放掉」，与飞入他宫的定向作用不同。
+
+**签名**
+
+```python
+def self_mutaged(self, mutagens: Mutagen | list[Mutagen]) -> bool
+def self_mutaged_one_of(self, mutagens: Mutagen | list[Mutagen] | None = None) -> bool
+def not_self_mutaged(self, mutagens: Mutagen | list[Mutagen] | None = None) -> bool
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `mutagens` | `str \| list[str] \| None` | 视方法 | `None` | 要检查的四化；后两个方法省略时表示「四化全部」 |
+
+**返回值**
+
+| 方法 | 语义 |
+| --- | --- |
+| `self_mutaged` | 列出的四化全部自化 |
+| `self_mutaged_one_of` | 列出的四化至少一个自化；省略参数时检查全部四化 |
+| `not_self_mutaged` | 列出的四化一个都不自化；省略参数时检查全部四化 |
+
+**示例**
+
+```python
+career = chart.palace("careerPalace")
+
+print("官禄宫自化禄:", career.self_mutaged(Mutagen.LU))
+print("官禄宫自化忌:", career.self_mutaged(Mutagen.JI))
+print("官禄宫有任一自化:", career.self_mutaged_one_of())
+print("官禄宫无任何自化:", career.not_self_mutaged())
+```
+
+**输出**
+
+```text
+官禄宫自化禄: False
+官禄宫自化忌: True
+官禄宫有任一自化: True
+官禄宫无任何自化: False
+```
+
+官禄宫宫干为丙，丙干化忌在廉贞，而廉贞正坐官禄宫，故成自化忌。
+
+**边界与陷阱**
+
+<Callout type="info" title="空列表在这三个方法里的含义不同于飞星族">
+`self_mutaged_one_of` 与 `not_self_mutaged` 把不传参数（或空列表）解释为「全部四化」。
+`self_mutaged` 不做这层回退，空列表退化成「本宫是否包含空集」，恒为 `True`——
+与 `flies_to` 的空列表判假正好相反，别把两者的直觉混用。
+</Callout>
+
+---
+
+## mutaged_places / mutagen_stars
+
+**用途**　取本宫宫干化出的四颗星分别落在哪些宫，或直接取那四颗星本身。
+
+**斗数含义**　飞星分析的全景版本：不问「有没有飞到某宫」，而是一次拿到禄权科忌的落点。
+
+**签名**
+
+```python
+def mutaged_places(self, all_palaces: list[Palace] | None = None) -> list[Palace | None]
+def mutagen_stars(self, mutagens: Mutagen | list[Mutagen]) -> list[str]
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `all_palaces` | `list[Palace] \| None` | 否 | `None` | 通常不传，宫位已持有星盘 |
+| `mutagens` | `str \| list[str]` | 是 | — | 要取的四化位 |
+
+**返回值**　`mutaged_places` 返回长度为 4 的列表，顺序为**禄、权、科、忌**，
+某颗被化的星不在盘上时对应位置为 `None`。
+`mutagen_stars` 返回星耀标识列表，顺序与传入的四化一致。
+
+**示例**
+
+```python
+soul = chart.palace("soulPalace")
+
+for m, place in zip(["禄", "权", "科", "忌"], soul.mutaged_places()):
+    print(f"化{m} →", place.name if place else "不在盘上")
+
+print(soul.mutagen_stars([Mutagen.LU, Mutagen.JI]))
+```
+
+**输出**
+
+```text
+化禄 → 子女
+化权 → 命宫
+化科 → 官禄
+化忌 → 财帛
+['tianliangMaj', 'wuquMaj']
+```
+
+命宫宫干为壬，壬干四化为天梁化禄、紫微化权、左辅化科、武曲化忌，
+四颗星分别坐在子女、命宫、官禄、财帛四宫。
+
+<Callout type="info">
+不传 `all_palaces` 时检索范围是本宫所属星盘的十二宫。
+脱离星盘单独构造的宫位既没有星盘也没传范围，此时返回**空列表**而不是四个 `None`。
+`mutaged_places` 恒按禄、权、科、忌四位取，不受参数影响；
+要挑其中几位用 `mutagen_stars`。
+</Callout>
+
+---
+
+## opposite_palace / surrounded_palaces / astrolabe
+
+**用途**　从宫位回溯到对宫、三方四正与所属星盘。
+
+**签名**
+
+```python
+def opposite_palace(self) -> Palace | None
+def surrounded_palaces(self) -> SurroundedPalaces | None
+def astrolabe(self) -> Astrolabe | None
+```
+
+**返回值**　脱离星盘单独构造的宫位返回 `None`；由星盘查询得到的宫位必然非空。
+
+**示例**
+
+```python
+soul = chart.palace("soulPalace")
+
+print(soul.name, "的对宫是", soul.opposite_palace().name)
+print("三方四正见煞:", soul.surrounded_palaces().have_one_of(["huoxingMin", "lingxingMin"]))
+print(soul.astrolabe().five_elements_class)
+```
+
+**输出**
+
+```text
+命宫 的对宫是 迁移
+三方四正见煞: True
+木三局
+```
+
+---
+
+## to_text
+
+**用途**　本宫的语义化文本，与本命盘文本中该宫的段落一致。
+
+**签名**
+
+```python
+def to_text(
+    self,
+    *,
+    knowledge: bool | KnowledgePack | None = None,
+    config: PatternConfig | None = None,
+) -> str
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `knowledge` | `bool \| KnowledgePack \| None` | 否 | `None` | 释义材料：`True` 取排盘语言的内嵌默认包，`KnowledgePack` 用该包；给出时该宫事实行之后紧跟该宫每颗星的释义（`**星名(亮度)化X**: 正文`，同宫主星组合在前，十二神不释义），见[带释义的文本](/zh/docs/guide/guides/to-text#带释义的文本) |
+| `config` | `PatternConfig \| None` | 否 | `None` | 格局判定口径，与 `patterns(config)` 同一入参；同时作用于文本的格局节与格局释义。`None` 取默认口径 |
+
+**示例**
+
+```python
+print(chart.palace("命宫").to_text(), end="")
+print(chart.palace("命宫").to_text(knowledge=True).splitlines()[9][:15])
+```
+
+**输出**
+
+```text
+### 命宫 (壬午) · 大限 3-12
+- 主星: 紫微(庙)
+- 辅星: 文曲(陷)
+- 杂耀: 凤阁, 天福, 截路, 蜚廉, 年解
+- 三方四正: 对宫 迁移 · 三合 财帛, 官禄
+- 宫干壬飞化: 天梁化禄→子女, 紫微化权→命宫, 左辅化科→官禄, 武曲化忌→财帛
+- 十二神: 长生·衰, 博士·青龙, 岁前·丧门, 将前·灾煞
+- 小限虚岁: 5, 17, 29, 41, 53, 65, 77, 89, 101, 113
+**紫微(庙)**: 紫微星号
+```
+
+脱离星盘单独构造的宫位没有排盘上下文，调用抛 `ValueError`；
+`knowledge=True` 而排盘语言没有内嵌包（目前只有 zh-CN 有）抛 `IztroError`。
+完整格式见[语义化文本](/zh/docs/guide/guides/to-text)。

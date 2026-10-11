@@ -1,0 +1,263 @@
+---
+title: 错误处理
+description: IztroError 的 code 分类、触发条件、消息格式与处理模式。
+---
+
+所有收外部输入的入口在入参非法时抛 `IztroError`。日期格式、日期存在性、
+年份范围、时辰索引在核心层前置校验；性别、语言、标识、配置这些字符串取值在绑定层校验。
+
+```python
+from x_iztro import IztroError
+```
+
+`IztroError` 继承自 `ValueError`，因此既有的 `except ValueError` 照样接得住，
+不必为升级改代码。
+
+## code
+
+异常消息面向人，会随版本调整措辞；要在程序里分支请用 `.code`：
+
+| `code` | 含义 | 典型触发 |
+| --- | --- | --- |
+| `invalid_date` | 日期非法 | 格式错、日期不存在、超出 1583–9999 |
+| `invalid_time_index` | 时辰索引越界 | 不在 0–12 |
+| `invalid_argument` | 其余入参或配置非法 | 性别、语言、星耀标识、宫名、自定义表 |
+| `internal` | 库内部缺陷 | 应视为 bug 上报 |
+
+这四个取值与 Rust 的 `IztroError::code()`、Go 的 `iztro.Error.Code` 是同一套，
+跨语言分支逻辑可以照抄。
+
+```python
+from x_iztro import Astro, IztroError
+
+for args in [("2000-2-30", 2, "female"), ("2000-8-16", 13, "female"), ("2000-8-16", 2, "x")]:
+    try:
+        Astro().by_solar(*args)
+    except IztroError as e:
+        print(e.code, "|", e)
+```
+
+**输出**
+
+```text
+invalid_date | invalid solar date '2000-2-30': day is out of range for that month
+invalid_time_index | time_index must be 0-12, got 13
+invalid_argument | invalid gender 'x': expected 'male' or 'female'
+```
+
+<Callout type="info" title="不会抛出 PanicException">
+库内部缺陷导致的 panic 在绑定层被兜住，转成 `code` 为 `internal` 的 `IztroError`，
+不会漏出 `except Exception` 捕获不到的 `pyo3_runtime.PanicException`。
+</Callout>
+
+---
+
+## 日期相关
+
+| 情形 | 例 | 消息 |
+| --- | --- | --- |
+| 格式不是 `YYYY-M-D` | `"2000/8/16"` | `expected 'YYYY-M-D'` |
+| 年、月、日不是数字 | `"abc-8-16"` | `year is not a number` |
+| 月份越界 | `"2000-13-1"` | `month must be within 1-12` |
+| 该月没有这一天 | `"2000-2-30"` | `day is out of range for that month` |
+| 年份超出支持范围 | `"1500-1-1"` | `year must be within 1583-9999` |
+
+农历专有（只有 `by_lunar` 与两个 `*_by_lunar_date` 查询会碰到）：
+
+| 情形 | 例 | 消息 |
+| --- | --- | --- |
+| 该农历年没有这个月 | 表内缺月 | `month does not exist in that lunar year` |
+| 该农历月没有这一天 | `"2000-7-30"`（七月是小月） | `day is out of range for that lunar month` |
+
+农历消息的前缀是 `invalid lunar date '<原串>': `，公历是 `invalid solar date '<原串>': `，
+从消息就能看出走的是哪个入口。
+
+**示例**
+
+```python
+from x_iztro import Astro
+
+for date in ["2000-13-1", "2000-2-30", "1500-1-1"]:
+    try:
+        Astro().by_solar(date, 2, "female")
+    except IztroError as e:
+        print(e)
+```
+
+**输出**
+
+```text
+invalid solar date '2000-13-1': month must be within 1-12
+invalid solar date '2000-2-30': day is out of range for that month
+invalid solar date '1500-1-1': year must be within 1583-9999
+```
+
+消息里带上了原始输入，便于在批量处理时定位是哪一条数据出的问题。
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="年份下限 1583 的由来">
+1582 年格里历改革当年有一段不存在的日期。底层历法库在这些日期上没有定义，
+因此支持范围从改革完成后的 1583 年起算。上限 9999 是农历数据表的覆盖终点。
+</Accordion>
+<Accordion title="月日不必补零">
+`"2000-8-16"` 与 `"2000-08-16"` 都接受。分隔符必须是 `-`。
+</Accordion>
+<Accordion title="农历闰月的校验">
+`by_lunar` 会检查该农历年该月是否真的存在，以及该月有多少天（大月 30、小月 29）。
+`is_leap_month` 传 `True` 但那年那月无闰月时不报错，参数被静默忽略。
+</Accordion>
+</Accordions>
+
+---
+
+## 时辰索引
+
+**触发条件**　时辰索引不在 0–12。
+
+**示例**
+
+```python
+try:
+    Astro().by_solar("2000-8-16", 13, "female")
+except IztroError as e:
+    print(e)
+```
+
+**输出**
+
+```text
+time_index must be 0-12, got 13
+```
+
+**边界与陷阱**
+
+<Callout type="info" title="13 个而不是 12 个">
+子时跨午夜，拆成早子时（索引 0）与晚子时（索引 12），因此合法值有 13 个。
+从小时数换算用 [`utils.time_to_index`](/zh/docs/python/util#time_to_index)，
+它保证结果落在合法范围。
+</Callout>
+
+---
+
+## 性别与语言
+
+`code` 均为 `invalid_argument`。
+
+| 参数 | 合法值 | 消息 |
+| --- | --- | --- |
+| `gender` | `"male"` / `"female"` | `invalid gender 'x': expected 'male' or 'female'` |
+| `language` | 六个语言代码 | `invalid language 'xx': expected one of zh-CN, zh-TW, en-US, ja-JP, ko-KR, vi-VN` |
+
+语言代码大小写不敏感，`"zh-cn"` 与 `"zh-CN"` 都接受。
+用 `Gender` / `Language` 枚举传参可以在写错的当场被 IDE 挡下。
+
+---
+
+## 标识相关
+
+工具函数与安星函数收的是语言无关标识，未知标识会报错：
+
+```python
+from x_iztro import utils
+
+try:
+    utils.get_brightness("nosuchstar", 0)
+except IztroError as e:
+    print(e.code, "|", e)
+```
+
+**输出**
+
+```text
+invalid_argument | unknown star key 'nosuchstar'
+```
+
+<Callout type="warn" title="传译名会报错">
+这些函数只认标识不认译名。传 `"紫微"` 会得到
+`unknown star key '紫微'`——先用 [`i18n.key_of`](/zh/docs/python/i18n#key_of) 换算。
+
+星盘上的**查询方法**（`chart.palace`、`chart.star`、`palace.has`）是另一套规则：
+它们同时接受标识与当前语言的译名，且查不到时静默返回 `None` / `False` 而不报错。
+详见[星盘对象](/zh/docs/python/astrolabe#palace)。
+</Callout>
+
+---
+
+## 配置相关
+
+`ChartConfig` 的六个开关与两张自定义表都在排盘时校验，`code` 均为 `invalid_argument`：
+
+| 情形 | 消息 |
+| --- | --- |
+| 开关取值未知 | `invalid yearDivide 'nope': expected 'normal' or 'exact'` |
+| 四化表的天干标识未知 | `invalid mutagens key 'nope': unknown heavenly stem` |
+| 某个天干的四化不是四项 | `invalid mutagens for 'jiaHeavenly': expected 4 stars (lu, quan, ke, ji), got 1` |
+| 某颗星的亮度表不是十二项 | `invalid brightness for 'ziweiMaj': expected 12 entries, got 1` |
+
+<Callout type="info">
+长度是**严格**校验：四化必须正好四项、亮度必须正好十二项，多一项少一项都报错。
+自定义表只收标识不收译名。
+</Callout>
+
+---
+
+## 处理模式
+
+**批量处理时跳过坏数据**
+
+```python
+rows = [
+    {"date": "2000-8-16", "ti": 2, "gender": "female"},
+    {"date": "2000-2-30", "ti": 2, "gender": "female"},
+    {"date": "1990-3-3", "ti": 13, "gender": "male"},
+]
+
+charts, failed = [], []
+astro = Astro()
+
+for row in rows:
+    try:
+        charts.append(astro.by_solar(row["date"], row["ti"], row["gender"]))
+    except IztroError as e:
+        failed.append((row["date"], e.code))
+
+print(len(charts), failed)
+```
+
+**输出**
+
+```text
+1 [('2000-2-30', 'invalid_date'), ('1990-3-3', 'invalid_time_index')]
+```
+
+**转成自己的异常类型**
+
+```python
+class ChartError(Exception):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+def build(date: str, ti: int, gender: str):
+    try:
+        return Astro().by_solar(date, ti, gender)
+    except IztroError as e:
+        raise ChartError(e.code, f"排盘失败: {e}") from e
+
+
+try:
+    build("2000-2-30", 2, "female")
+except ChartError as e:
+    print(e.code, "|", e)
+```
+
+**输出**
+
+```text
+invalid_date | 排盘失败: invalid solar date '2000-2-30': day is out of range for that month
+```
+
+`code` 转出去之后，上层就不必再解析文案。

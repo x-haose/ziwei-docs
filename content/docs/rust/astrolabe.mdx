@@ -1,0 +1,592 @@
+---
+title: 星盘对象
+description: Astrolabe 的字段、定位方法，以及三方四正与夹宫。
+---
+
+`Astrolabe` 是排盘的产物，也是一切查询的入口。它持有十二宫的全部数据，
+以及四柱、命主身主、五行局这些盘级信息。
+
+```rust
+let chart = by_solar("2000-8-16", 2, Gender::Female, true, Language::ZhCN, Config::default())?;
+```
+
+<Callout type="info">
+本页示例统一用 `Language::ZhCN` 排盘，因此输出里的展示值都是中文。
+换成别的语言只改这些展示串，`*_key` 标识与所有判断方法的结果不变。
+</Callout>
+
+## 字段
+
+<Accordions>
+<Accordion title="展示字段">
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `gender` | `Gender` | 性别 |
+| `solar_date` | `String` | 公历日期，与入参一致 |
+| `lunar_date` | `String` | 农历日期的中文写法，如「二〇〇〇年七月十七」 |
+| `chinese_date` | `String` | 四柱展示串，如「庚辰 甲申 丙午 庚寅」 |
+| `time` | `String` | 时辰名，如「寅时」 |
+| `time_range` | `String` | 时辰对应的钟点区间，如「03:00~05:00」 |
+| `sign` | `String` | 星座，按公历日期 |
+| `zodiac` | `String` | 生肖，按年支 |
+
+展示字段随 `language` 翻译。要做判断请用下一组的标识字段。
+
+</Accordion>
+<Accordion title="盘级标识字段">
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `sign_key` | `String` | 星座标识，`aries` … `pisces` |
+| `zodiac_key` | `String` | 生肖标识，`rat` … `pig` |
+| `earthly_branch_of_soul_palace` | `EarthlyBranch` | 命宫地支 |
+| `earthly_branch_of_body_palace` | `EarthlyBranch` | 身宫地支 |
+| `soul` | `StarKey` | 命主星 |
+| `body` | `StarKey` | 身主星 |
+| `five_elements_class` | `FiveElementsClass` | 五行局，决定大限起运岁数与紫微起宫 |
+
+这些是强类型枚举，与语言无关，可直接比较。
+
+</Accordion>
+<Accordion title="结构字段">
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `palaces` | `[PalaceData; 12]` | 十二宫，定长数组，索引 0 为寅宫、11 为丑宫 |
+| `raw_dates` | `RawDates` | 结构化的农历生日与四柱干支枚举 |
+
+`palaces` 的索引是**宫位索引**而非宫名顺序：`palaces[0]` 永远是寅宫，
+命宫可能落在其中任何一格。取命宫用 `chart.palace(Palace::Soul)`。
+
+`raw_dates` 是 `lunar_date` / `chinese_date` 两个展示串的数据形式，
+要做日期运算或按干支查表时用它，不必解析中文串：
+
+```rust
+pub struct RawDates {
+    pub lunar_date: RawLunarDate,
+    pub chinese_date: RawChineseDate,
+}
+
+pub struct RawLunarDate {
+    pub lunar_year: i64,     // 农历年
+    pub lunar_month: u32,    // 农历月 1–12，是否闰月看 is_leap
+    pub lunar_day: u32,      // 农历日 1–30
+    pub is_leap: bool,       // 是否闰月
+}
+
+pub struct RawChineseDate {
+    pub yearly: (HeavenlyStem, EarthlyBranch),   // 年柱
+    pub monthly: (HeavenlyStem, EarthlyBranch),  // 月柱
+    pub daily: (HeavenlyStem, EarthlyBranch),    // 日柱
+    pub hourly: (HeavenlyStem, EarthlyBranch),   // 时柱
+}
+```
+
+三个类型都在 crate 根重导出，`use x_iztro::*;` 即可用。
+
+</Accordion>
+<Accordion title="排盘上下文">
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `time_index` | `u8` | 出生时辰索引，即使 `day_divide` 把晚子时改判当日也保留原值 |
+| `fix_leap` | `bool` | 排盘时是否修正闰月 |
+| `language` | `Language` | 输出语言 |
+| `config` | `Config` | 排盘配置 |
+
+运限与 Prompt 从这四项重新发起计算，因此不必再传一遍排盘参数。
+
+</Accordion>
+</Accordions>
+
+---
+
+## palace
+
+**用途**　按索引、宫名、身宫或来因宫取一宫。
+
+**斗数含义**　十二宫是斗数的骨架。命宫定下后，其余十一宫按固定顺序逆时针排开。
+「身宫」是十二宫之一同时被标记的那一宫，代表后天着力处；
+「来因宫」是宫干与生年干相同的那一宫，代表事情的起因。
+
+**签名**
+
+```rust
+pub fn palace(&self, target: impl Into<PalaceTarget>) -> Option<PalaceRef<'_>>
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `target` | `impl Into<PalaceTarget>` | 是 | — | 四种写法见下表 |
+
+`PalaceTarget` 的四个变体都有 `From` 实现，调用时直接写值即可：
+
+| 写法 | 例子 | 含义 |
+| --- | --- | --- |
+| 索引 | `chart.palace(0)` | 宫位索引 0–11，0 为寅宫 |
+| 宫名 | `chart.palace(Palace::Soul)` | 十二宫名之一 |
+| 身宫 | `chart.palace(PalaceTarget::Body)` | 带身宫标记的那一宫 |
+| 来因宫 | `chart.palace(PalaceTarget::Original)` | 宫干与生年干相同的那一宫 |
+
+**返回值**　`Option<PalaceRef<'_>>`。索引越界返回 `None`；宫名、身宫、来因宫三种写法在任何一张盘上都能定位到，不会是 `None`。
+
+**示例**
+
+```rust
+let zh = Language::ZhCN;
+
+let soul = chart.palace(Palace::Soul).unwrap();
+println!("{} {}{}", translate_palace(soul.name, zh),
+    translate_heavenly_stem(soul.heavenly_stem, zh),
+    translate_earthly_branch(soul.earthly_branch, zh));
+
+let body = chart.palace(PalaceTarget::Body).unwrap();
+println!("身宫落在 {}", translate_palace(body.name, zh));
+
+let original = chart.palace(PalaceTarget::Original).unwrap();
+println!("来因宫是 {}", translate_palace(original.name, zh));
+
+println!("寅宫是 {}", translate_palace(chart.palace(0).unwrap().name, zh));
+```
+
+<Callout type="info">
+`PalaceData::name` 的类型是 `Palace` 枚举而非字符串，不能直接用 `{}` 打印——
+枚举是语言无关标识，展示时经 `translate_palace` 转成当前语言的文本。
+`heavenly_stem`、`earthly_branch`、`five_elements_class` 等字段同理。
+</Callout>
+
+**输出**
+
+```text
+命宫 壬午
+身宫落在 官禄
+来因宫是 夫妻
+寅宫是 财帛
+```
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="来因宫恒有且仅有一个">
+来因宫要求宫干与生年干相同，且该宫不在子、丑二宫。
+十二宫的天干由五虎遁从寅宫起排，寅到酉这十宫刚好把十天干各走一遍，
+子、丑两宫是第十一、十二格，重复了寅、卯的天干——正因为重复才被排除在外。
+于是生年干在寅到酉之间必然命中且只命中一次：任何一张盘上来因宫都存在，且唯一。
+</Accordion>
+<Accordion title="宫名查找是唯一的">
+十二宫名在一张盘上各出现一次，因此按宫名查找必然唯一。
+身宫是**标记**不是宫名——身宫同时也是十二宫中的某一宫（例中的官禄宫）。
+来因宫同理，例中落在夫妻宫。
+</Accordion>
+</Accordions>
+
+---
+
+## star
+
+**用途**　按标识找到一颗星，得到能回溯所在宫的视图。
+
+**签名**
+
+```rust
+pub fn star(&self, key: StarKey) -> Option<StarRef<'_>>
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `key` | `StarKey` | 是 | — | 星耀标识，如 `StarKey::ZiweiMaj` |
+
+**返回值**　`Option<StarRef<'_>>`。该星不在这张盘上时返回 `None`。
+
+**示例**
+
+```rust
+let zh = Language::ZhCN;
+let ziwei = chart.star(StarKey::ZiweiMaj).unwrap();
+
+println!("{} 在 {}", ziwei.name, translate_palace(ziwei.palace().name, zh));
+println!("对宫是 {}", translate_palace(ziwei.opposite_palace().name, zh));
+println!("亮度 {:?} 四化 {:?}", ziwei.brightness, ziwei.mutagen);
+```
+
+`Star::name` 是 `String`（排盘时已按语言翻译好），可以直接打印；
+宫名 `PalaceData::name` 是枚举，要经 `translate_palace`。
+
+**输出**
+
+```text
+紫微 在 命宫
+对宫是 迁移
+亮度 Some(Miao) 四化 None
+```
+
+**边界与陷阱**
+
+<Callout type="info">
+只在主星、辅星、杂耀三组里查找。长生十二神、博士十二神、岁前与将前十二神
+是每宫一个的标记而非星耀列表，用 `palace.changsheng12` 一类字段直接取。
+</Callout>
+
+---
+
+## surrounded_palaces
+
+**用途**　取目标宫的三方四正。
+
+**斗数含义**　三方四正是斗数最常用的取象范围：本宫、对宫（本宫 +6）、
+官禄位（本宫 +4）、财帛位（本宫 +8）。四个宫合起来看，而不只看本宫，
+是因为对宫与三合宫的星耀同样作用于本宫的事。
+
+**签名**
+
+```rust
+pub fn surrounded_palaces(&self, target: impl Into<PalaceTarget>) -> Option<SurroundedPalaces<'_>>
+```
+
+**参数**　同 `palace`，四种定位写法都支持。
+
+**返回值**　`Option<SurroundedPalaces<'_>>`，含 `target` / `opposite` / `wealth` / `career`
+四个 `&PalaceData`（不是 `PalaceRef`，字段可直接读，但没有对宫、飞星那些需要星盘上下文的方法）。
+判断方法见[三方四正](/zh/docs/rust/surpalaces)。
+
+**示例**
+
+```rust
+let zh = Language::ZhCN;
+let sp = chart.surrounded_palaces(Palace::Soul).unwrap();
+
+println!("{} / {} / {} / {}",
+    translate_palace(sp.target.name, zh), translate_palace(sp.opposite.name, zh),
+    translate_palace(sp.wealth.name, zh), translate_palace(sp.career.name, zh));
+println!("三方四正见紫微: {}", sp.have(&[StarKey::ZiweiMaj]));
+```
+
+**输出**
+
+```text
+命宫 / 迁移 / 财帛 / 官禄
+三方四正见紫微: true
+```
+
+---
+
+## is_surrounded / is_surrounded_one_of / not_surrounded
+
+**用途**　直接在星盘上判断某宫的三方四正里有没有指定星耀，省去先取三方四正的一步。
+
+**签名**
+
+```rust
+pub fn is_surrounded(&self, target: impl Into<PalaceTarget>, stars: &[StarKey]) -> bool
+pub fn is_surrounded_one_of(&self, target: impl Into<PalaceTarget>, stars: &[StarKey]) -> bool
+pub fn not_surrounded(&self, target: impl Into<PalaceTarget>, stars: &[StarKey]) -> bool
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `target` | `impl Into<PalaceTarget>` | 是 | — | 定位方式同 `palace` |
+| `stars` | `&[StarKey]` | 是 | — | 星耀标识列表 |
+
+**返回值**
+
+| 方法 | 语义 |
+| --- | --- |
+| `is_surrounded` | 列表中**每一颗**都在三方四正里 |
+| `is_surrounded_one_of` | 列表中**至少一颗**在三方四正里 |
+| `not_surrounded` | 列表中**一颗都不在**三方四正里 |
+
+**示例**
+
+```rust
+use x_iztro::StarKey::*;
+
+println!("{}", chart.is_surrounded(Palace::Soul, &[ZiweiMaj, TianxiangMaj]));
+println!("{}", chart.is_surrounded_one_of(Palace::Soul, &[QishaMaj, PojunMaj]));
+println!("{}", chart.not_surrounded(Palace::Soul, &[HuoxingMin]));
+```
+
+**输出**
+
+```text
+true
+false
+true
+```
+
+命宫只坐紫微，天相在三方之一的财帛宫，因此第一行为 `true`；
+七杀与破军都不在这四宫内，第二行为 `false`。
+
+**边界与陷阱**
+
+<Callout type="warn" title="空列表的返回值">
+`stars` 传空切片时，`is_surrounded` 与 `not_surrounded` 返回 `true`
+（「所有元素都满足」与「没有元素不满足」对空集都成立），
+`is_surrounded_one_of` 返回 `false`。调用前先确认列表非空。
+</Callout>
+
+---
+
+## flanking_palaces
+
+**用途**　取目标宫的夹宫：盘上紧邻它前后的两宫。
+
+**斗数含义**　「羊陀夹忌」「日月夹命」这类说法看的就是夹宫。
+夹宫与三方四正是两条不重叠的线索：三方四正问的是同一组能量彼此呼应，
+夹宫问的是这一宫左右两侧的处境。
+
+**签名**
+
+```rust
+pub fn flanking_palaces(&self, target: impl Into<PalaceTarget>) -> Option<FlankingPalaces<'_>>
+```
+
+**参数**　同 `palace`，四种定位写法都支持。
+
+**返回值**　`Option<FlankingPalaces<'_>>`，两个字段：
+
+| 字段 | 相对目标宫 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `previous` | -1 | `&PalaceData` | 前一宫 |
+| `next` | +1 | `&PalaceData` | 后一宫 |
+
+十二宫首尾相连，索引对 12 回绕：第 0 宫的前一宫是第 11 宫。
+另有 `astrolabe()` 取回两宫所属的星盘。
+
+五个判断方法与[三方四正](/zh/docs/rust/surpalaces)同名同义，只是作用范围换成这两宫：
+
+| 方法 | 语义 |
+| --- | --- |
+| `have(&[StarKey]) -> bool` | 两宫合起来含列表中每一颗 |
+| `not_have(&[StarKey]) -> bool` | 两宫一颗都不含 |
+| `have_one_of(&[StarKey]) -> bool` | 两宫合起来至少含一颗 |
+| `have_mutagen(Mutagen) -> bool` | 两宫中有任一宫带该生年四化 |
+| `not_have_mutagen(Mutagen) -> bool` | 两宫都不带 |
+
+**示例**
+
+```rust
+let zh = Language::ZhCN;
+let f = chart.flanking_palaces(Palace::Soul).unwrap();
+
+println!("{} / {}", translate_palace(f.previous.name, zh), translate_palace(f.next.name, zh));
+println!("{}", f.have(&[StarKey::TianjiMaj, StarKey::TuoluoMin]));
+println!("{}", f.have_one_of(&[StarKey::HuoxingMin]));
+
+let w = chart.flanking_palaces(Palace::Wealth).unwrap();
+println!("{} / {}", translate_palace(w.previous.name, zh), translate_palace(w.next.name, zh));
+println!("{} {}", w.have_mutagen(Mutagen::Lu), w.have_mutagen(Mutagen::Ji));
+```
+
+**输出**
+
+```text
+兄弟 / 父母
+true
+false
+疾厄 / 子女
+true true
+```
+
+命宫在午，夹它的是兄弟（巳）与父母（未）。天机坐兄弟、陀罗坐父母，分处两宫，
+`have` 仍然成立；火星坐夫妻，不在这两宫之内，因此 `have_one_of` 为 `false`。
+财帛在寅，夹它的疾厄坐天同、子女坐太阳，这张盘生年干庚使太阳化禄、天同化忌，
+于是禄与忌两问都为 `true`。
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="判定在两宫合计的集合上做">
+`have(&[A, B])` 问的是「A 和 B 都出现在这两宫里」，不要求它们同在其中一宫。
+要单看某一侧，直接对 `f.previous` / `f.next` 调宫位的
+[`has`](/zh/docs/rust/palace#has--not_have--has_one_of)。
+</Accordion>
+<Accordion title="没有「排在边上所以缺一侧」的宫">
+索引对 12 回绕，十二宫每一宫都有完整的前后两宫。
+</Accordion>
+<Accordion title="空列表的返回值">
+`have` 与 `not_have` 在空列表下返回 `true`，`have_one_of` 返回 `false`。
+</Accordion>
+</Accordions>
+
+---
+
+## horoscope / horoscope_now
+
+**用途**　以本盘为起点计算目标日期的运限。
+
+**签名**
+
+```rust
+pub fn horoscope(&self, target_date: &str, target_time_index: u8) -> Result<HoroscopeRef<'_>, IztroError>
+pub fn horoscope_now(&self) -> Result<HoroscopeRef<'_>, IztroError>
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `target_date` | `&str` | 是 | — | 目标公历日期，格式 `YYYY-M-D` |
+| `target_time_index` | `u8` | 是 | — | 目标时辰索引 0–12，决定流时 |
+
+`horoscope_now` 取本地时钟的当前日期与当前时辰，无参数。
+
+**返回值**　`HoroscopeRef<'_>`——持有本盘的运限视图，六个层级的宫位查询不必再传星盘。
+详见[运限对象](/zh/docs/rust/horoscope)。
+
+**示例**
+
+```rust
+let zh = Language::ZhCN;
+let h = chart.horoscope("2025-6-1", 0)?;
+
+println!("大限 {}{}",
+    translate_heavenly_stem(h.decadal.heavenly_stem, zh),
+    translate_earthly_branch(h.decadal.earthly_branch, zh));
+println!("流年 {}{}",
+    translate_heavenly_stem(h.yearly.heavenly_stem, zh),
+    translate_earthly_branch(h.yearly.earthly_branch, zh));
+```
+
+<Callout type="info">
+`decadal` / `monthly` / `daily` / `hourly` 是 `HoroscopeItem`，干支直接读；
+`yearly` 与 `age` 各自多带一项自己的数据（通用字段收在 `base` 里），
+但两者都实现了 `Deref`，`h.yearly.heavenly_stem` 同样直接可读。
+</Callout>
+
+**输出**
+
+```text
+大限 庚辰
+流年 乙巳
+```
+
+---
+
+## to_text
+
+**用途**　星盘的语义化文本：面向语言模型与人的完整描述，Markdown 子集。
+
+**签名**
+
+```rust
+pub fn to_text(&self) -> String
+```
+
+按排盘语言输出；要指定语言用自由函数 `text::astrolabe_to_text(astrolabe, lang)`——
+`lang` 可以与排盘语言不同，全部字段按标识以目标语言重翻。
+单宫与三方四正见 `PalaceRef::to_text()` / `SurroundedPalaces::to_text()`。
+完整格式见[语义化文本](/zh/docs/guide/guides/to-text)。
+
+**示例**
+
+```rust
+for line in chart.to_text().lines().take(5) {
+    println!("{line}");
+}
+```
+
+**输出**
+
+```text
+# 命盘 2000-8-16 寅时 女
+
+## 基本信息
+- 阳历: 2000-8-16 · 农历: 二〇〇〇年七月十七 · 时辰: 寅时 (03:00~05:00)
+- 四柱: 庚辰 甲申 丙午 庚寅 · 生肖: 龙 · 星座: 狮子座
+```
+
+---
+
+## to_text_with
+
+**用途**　`to_text` 的同一份文本，按 [`TextOptions`](/zh/docs/rust/astro#textoptions) 附释义：
+格局列表之后紧跟格局释义，每宫事实之后紧跟该宫星耀释义（同宫主星组合在前），
+文末附 `## 四化释义`。事实部分与 `to_text` 逐行相同。
+
+**签名**
+
+```rust
+pub fn to_text_with(&self, opts: &TextOptions) -> String
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `opts` | `&TextOptions` | 是 | — | 输出选项；`TextOptions::new().knowledge(pack)` 带释义，`TextOptions::default()` 与 `to_text` 等价 |
+
+按排盘语言输出；要指定语言用自由函数 `text::astrolabe_to_text_with(astrolabe, opts, lang)`。
+条目标题按 `lang` 翻译，正文是包里的原文。取材规则与
+[`KnowledgePack::for_astrolabe`](/zh/docs/rust/knowledge#for_astrolabe--for_horoscope) 相同，
+插入位置见[带释义的文本](/zh/docs/guide/guides/to-text#带释义的文本)。
+
+**示例**
+
+```rust
+let pack = KnowledgePack::builtin(Language::ZhCN).unwrap();
+let text = chart.to_text_with(&TextOptions::new().knowledge(pack));
+
+println!("{} {}", chart.to_text().chars().count(), text.chars().count());
+println!("{}", text.lines().filter(|l| l.starts_with("## ")).collect::<Vec<_>>().join(" "));
+```
+
+**输出**
+
+```text
+3389 20767
+## 基本信息 ## 十二宫总览 ## 格局 ## 十二宫 ## 四化释义
+```
+
+---
+
+## to_dto
+
+**用途**　把星盘转成与 JS iztro 字段契约一致的序列化结构。
+
+**签名**
+
+```rust
+pub fn to_dto(&self) -> AstrolabeDto
+```
+
+**返回值**　`x_iztro::dto::AstrolabeDto`——camelCase 键、值按**排盘语言**翻译，
+另带 `*Key` 语言无关标识与排盘上下文（`genderKey` / `timeIndex` / `fixLeap` / `language` / `config`）。
+字段清单见[数据结构](/zh/docs/guide/data-model)。
+
+**示例**
+
+```rust
+let dto = chart.to_dto();
+let json = serde_json::to_string(&dto)?;
+let v: serde_json::Value = serde_json::from_str(&json)?;
+
+println!("{} {}", v["solarDate"], v["palaces"][4]["nameKey"]);
+println!("{}", v["config"]["yearDivide"]);
+```
+
+**输出**
+
+```text
+"2000-8-16" "soulPalace"
+"normal"
+```
+
+**边界与陷阱**
+
+<Callout type="info">
+DTO 是给跨语言绑定与前端用的。Rust 侧做分析请直接用 `Astrolabe`——
+它有全部查询方法，DTO 只有数据。想一步拿到 JSON 字符串用
+[`by_solar_json`](/zh/docs/rust/astro#by_solar_json--by_lunar_json)。
+</Callout>
+
+<Callout type="warn">
+`Config` 的 `overrides`（自定义四化与亮度表）不进 DTO：它是排盘输入而非结果，
+回显会破坏与 JS iztro 的字段契约。
+</Callout>

@@ -1,0 +1,625 @@
+---
+title: 星盘对象
+description: Astrolabe 的字段、定位方法，以及三方四正与夹宫。
+---
+
+`Astrolabe` 是排盘的产物，也是一切查询的入口。它是 `frozen=True` 的 dataclass，
+持有十二宫的全部数据，以及四柱、命主身主、五行局这些盘级信息。
+
+```python
+chart = Astro().by_solar("2000-8-16", 2, "female")
+```
+
+<Callout type="info">
+本页示例统一用默认的 `zh-CN` 排盘，因此输出里的展示值都是中文。
+换语言只改这些展示串，`*_key` 标识与所有判断方法的结果不变。
+</Callout>
+
+## 字段
+
+<Accordions>
+<Accordion title="展示字段">
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `gender` | `str` | 性别译名 |
+| `solar_date` | `str` | 公历日期，与入参一致 |
+| `lunar_date` | `str` | 农历日期的中文写法 |
+| `chinese_date` | `str` | 四柱展示串 |
+| `time` | `str` | 时辰名 |
+| `time_range` | `str` | 时辰对应的钟点区间 |
+| `sign` | `str` | 星座 |
+| `zodiac` | `str` | 生肖 |
+| `soul` | `str` | 命主星译名 |
+| `body` | `str` | 身主星译名 |
+| `five_elements_class` | `str` | 五行局译名 |
+| `earthly_branch_of_soul_palace` | `str` | 命宫地支译名 |
+| `earthly_branch_of_body_palace` | `str` | 身宫地支译名 |
+
+展示字段随 `language` 翻译。要做判断请用下一组的 `*_key` 字段。
+
+</Accordion>
+<Accordion title="标识字段">
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `gender_key` | `str` | `"male"` / `"female"` |
+| `sign_key` | `str` | 星座标识，`aries` … `pisces` |
+| `zodiac_key` | `str` | 生肖标识，`rat` … `pig` |
+| `soul_key` | `str` | 命主星标识 |
+| `body_key` | `str` | 身主星标识 |
+| `five_elements_class_key` | `str` | 五行局标识 |
+| `earthly_branch_of_soul_palace_key` | `str` | 命宫地支标识 |
+| `earthly_branch_of_body_palace_key` | `str` | 身宫地支标识 |
+
+取值与 `x_iztro.enums` 的枚举一一对应，可直接用 `==` 比较。
+
+</Accordion>
+<Accordion title="结构字段">
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `palaces` | `list[Palace]` | 十二宫，索引 0 为寅宫、11 为丑宫 |
+| `raw_dates` | `RawDates` | 结构化的农历生日与四柱干支标识 |
+
+`palaces` 的索引是**宫位索引**而非宫名顺序：`palaces[0]` 永远是寅宫，
+命宫可能落在其中任何一格。取命宫用 `chart.palace("soulPalace")`。
+
+<Callout type="info" title="palaces 是惰性 property">
+十二宫在**首次访问** `chart.palaces` 时才从底层 DTO 构建并回填反向引用。
+只读日期、命主身主这些盘级字段的调用不必为此付出转换开销；
+构建后缓存在实例上，之后每次访问都是同一批对象。
+</Callout>
+
+`raw_dates` 是 `lunar_date` / `chinese_date` 两个展示串的数据形式，
+要做日期运算或按干支查表时用它，不必解析中文串：
+
+| 类型 | 字段 |
+| --- | --- |
+| `RawDates` | `lunar_date: RawLunarDate`、`chinese_date: RawChineseDate` |
+| `RawLunarDate` | `lunar_year: int`、`lunar_month: int`（1–12）、`lunar_day: int`、`is_leap: bool` |
+| `RawChineseDate` | 四柱的原始干支中文字（不随盘面语言翻译）`yearly` / `monthly` / `daily` / `hourly`（各是 `tuple[str, str]`），以及对应的标识 `yearly_keys` / `monthly_keys` / `daily_keys` / `hourly_keys` |
+
+`RawChineseDate` 另有一个方法 `pillar_keys() -> list[tuple[str, str]]`，
+按年、月、日、时的顺序一次给出四柱标识，正好是
+[`utils.translate_chinese_date`](/zh/docs/python/util#translate_chinese_date) 的入参形状。
+
+```python
+rd = chart.raw_dates
+
+print(rd.lunar_date.lunar_year, rd.lunar_date.lunar_month,
+      rd.lunar_date.lunar_day, rd.lunar_date.is_leap)
+print(rd.chinese_date.yearly, rd.chinese_date.yearly_keys)
+print(rd.chinese_date.pillar_keys())
+```
+
+**输出**
+
+```text
+2000 7 17 False
+('庚', '辰') ('gengHeavenly', 'chenEarthly')
+[('gengHeavenly', 'chenEarthly'), ('jiaHeavenly', 'shenEarthly'), ('bingHeavenly', 'wuEarthly'), ('gengHeavenly', 'yinEarthly')]
+```
+
+</Accordion>
+<Accordion title="排盘上下文">
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `time_index` | `int` | 出生时辰索引 |
+| `fix_leap` | `bool` | 排盘时是否修正闰月 |
+| `language` | `str` | 输出语言 |
+| `config` | `ChartConfig` | 排盘配置，由 DTO 还原的六个开关 |
+
+运限、重排与 Prompt 从这四项重新发起计算，因此不必再传一遍排盘参数。
+
+<Callout type="info" title="config 字段不回显自定义表">
+`chart.config` 是从输出 DTO 还原的，只含六个开关；
+排盘时传进来的自定义四化 / 亮度表不在里面。
+但星盘内部保留了调用方给的原件，因此 `rearranged`、`horoscope`、
+Prompt 这些二次计算仍然用得上那两张表——不会静默丢失。
+</Callout>
+
+</Accordion>
+</Accordions>
+
+---
+
+## palace
+
+**用途**　按索引、宫名、身宫或来因宫取一宫。
+
+**斗数含义**　十二宫是斗数的骨架。命宫定下后，其余十一宫按固定顺序逆时针排开。
+「身宫」是十二宫之一同时被标记的那一宫，代表后天着力处；
+「来因宫」是宫干与生年干相同的那一宫，代表事情的起因。
+
+**签名**
+
+```python
+def palace(self, index_or_name: int | PalaceName | str) -> Palace | None
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `index_or_name` | `int \| str` | 是 | — | 四种写法见下表 |
+
+| 写法 | 例子 | 含义 |
+| --- | --- | --- |
+| 索引 | `chart.palace(0)` | 宫位索引 0–11，0 为寅宫 |
+| 宫名标识 | `chart.palace("soulPalace")` | 十二宫名标识之一，即 `PalaceName` 的值域 |
+| 当前语言宫名 | `chart.palace("命宫")` | 与排盘语言一致的宫名文本 |
+| 身宫 | `chart.palace("bodyPalace")` | 带身宫标记的那一宫 |
+| 来因宫 | `chart.palace("originalPalace")` | 宫干与生年干相同的那一宫 |
+
+**返回值**　`Palace | None`。索引越界、宫名拼错时返回 `None`；
+宫名、身宫、来因宫三种写法只要拼对，在任何一张盘上都能定位到。
+
+**示例**
+
+```python
+soul = chart.palace("soulPalace")
+print(soul.name, soul.heavenly_stem + soul.earthly_branch)
+
+print("身宫落在", chart.palace("bodyPalace").name)
+print("来因宫是", chart.palace("originalPalace").name)
+print("寅宫是", chart.palace(0).name)
+```
+
+**输出**
+
+```text
+命宫 壬午
+身宫落在 官禄
+来因宫是 夫妻
+寅宫是 财帛
+```
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="来因宫恒有且仅有一个">
+来因宫要求宫干与生年干相同，且该宫不在子、丑二宫。
+十二宫的天干由五虎遁从寅宫起排，寅到酉这十宫刚好把十天干各走一遍，
+子、丑两宫重复了寅、卯的天干——正因为重复才被排除。
+于是生年干在寅到酉之间必然命中且只命中一次：任何一张盘上来因宫都存在，且唯一。
+身宫同理恒存在。因此 `None` 只可能来自索引越界或名字拼错。
+</Accordion>
+<Accordion title="名字拼错是静默的">
+`chart.palace("soulPalce")`（少一个 a）不会报错，只会返回 `None`——
+`palace` 用的是逐宫比对而不是查表，比不中就是没有。
+下一步再 `.name` 就变成 `AttributeError: 'NoneType' object has no attribute 'name'`，
+错误现场离真正的笔误已经隔了一段。
+
+要在写错的当场就发现，用枚举：`PalaceName.SOUL` 有 IDE 补全；
+名字来自外部输入时先过一遍构造函数，非法值直接抛 `ValueError`：
+
+```python
+from x_iztro import PalaceName
+
+print(PalaceName("soulPalace"))   # StrEnum，打印出来就是它的值
+try:
+    PalaceName("soulPalce")
+except ValueError as e:
+    print("ValueError:", e)
+```
+
+**输出**
+
+```text
+soulPalace
+ValueError: 'soulPalce' is not a valid PalaceName
+```
+
+同一条规律适用于 `star()`（星名拼错返回 `None`）与 `has()`
+（星名拼错返回 `False`，因为「集合里没有这个标识」）。
+枚举清单见[数据表](/zh/docs/python/data#枚举清单)。
+</Accordion>
+</Accordions>
+
+---
+
+## star / star_in_palace
+
+**用途**　按标识找到一颗星，或同时取回它所在的宫。
+
+**签名**
+
+```python
+def star(self, star: str) -> Star | None
+def star_in_palace(self, star: str) -> tuple[Star, Palace] | None
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `star` | `str` | 是 | — | 星耀标识（如 `"ziweiMaj"`），或**当前排盘语言**下的星名（如 `"紫微"`） |
+
+**返回值**　该星不在这张盘上时返回 `None`。
+`star_in_palace` 返回 `(星, 宫)` 二元组，省去再调 `star.palace()`。
+
+**示例**
+
+```python
+ziwei = chart.star("ziweiMaj")
+
+print(ziwei.name, "在", ziwei.palace().name)
+print("对宫是", ziwei.opposite_palace().name)
+print("亮度", ziwei.brightness, "四化", ziwei.mutagen)
+
+star, palace = chart.star_in_palace("ziweiMaj")
+print(star.key, palace.name_key)
+```
+
+**输出**
+
+```text
+紫微 在 命宫
+对宫是 迁移
+亮度 庙 四化 None
+ziweiMaj soulPalace
+```
+
+**边界与陷阱**
+
+<Callout type="info">
+只在主星、辅星、杂耀三组里查找。长生十二神、博士十二神、岁前与将前十二神
+是每宫一个的标记而非星耀列表，用 `palace.changsheng12_key` 一类字段直接取。
+</Callout>
+
+---
+
+## surrounded_palaces
+
+**用途**　取目标宫的三方四正。
+
+**斗数含义**　三方四正是斗数最常用的取象范围：本宫、对宫（本宫 +6）、
+官禄位（本宫 +4）、财帛位（本宫 +8）。四个宫合起来看，而不只看本宫，
+是因为对宫与三合宫的星耀同样作用于本宫的事。
+
+**签名**
+
+```python
+def surrounded_palaces(self, index_or_name: int | PalaceName | str) -> SurroundedPalaces | None
+```
+
+**参数**　同 `palace`，四种定位写法都支持。
+
+**返回值**　`SurroundedPalaces | None`，含 `target` / `opposite` / `wealth` / `career` 四个 `Palace`。
+定位不到（索引越界或宫名拼错）时返回 `None`。判断方法见[三方四正](/zh/docs/python/surpalaces)。
+
+**示例**
+
+```python
+sp = chart.surrounded_palaces("soulPalace")
+
+print(sp.target.name, sp.opposite.name, sp.wealth.name, sp.career.name)
+print("三方四正见紫微:", sp.have(["ziweiMaj"]))
+```
+
+**输出**
+
+```text
+命宫 迁移 财帛 官禄
+三方四正见紫微: True
+```
+
+---
+
+## is_surrounded / is_surrounded_one_of / not_surrounded
+
+**用途**　直接在星盘上判断某宫的三方四正里有没有指定星耀，省去先取三方四正的一步。
+
+**签名**
+
+```python
+def is_surrounded(self, index_or_name: int | PalaceName | str, stars: list[str]) -> bool
+def is_surrounded_one_of(self, index_or_name: int | PalaceName | str, stars: list[str]) -> bool
+def not_surrounded(self, index_or_name: int | PalaceName | str, stars: list[str]) -> bool
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `index_or_name` | `int \| str` | 是 | — | 定位方式同 `palace` |
+| `stars` | `list[str]` | 是 | — | 星耀标识列表 |
+
+**返回值**
+
+| 方法 | 语义 |
+| --- | --- |
+| `is_surrounded` | 列表中**每一颗**都在三方四正里 |
+| `is_surrounded_one_of` | 列表中**至少一颗**在三方四正里 |
+| `not_surrounded` | 列表中**一颗都不在**三方四正里 |
+
+**示例**
+
+```python
+print(chart.is_surrounded("soulPalace", ["ziweiMaj", "tianxiangMaj"]))
+print(chart.is_surrounded_one_of("soulPalace", ["qishaMaj", "pojunMaj"]))
+print(chart.not_surrounded("soulPalace", ["huoxingMin"]))
+```
+
+**输出**
+
+```text
+True
+False
+True
+```
+
+命宫只坐紫微，天相在三方之一的财帛宫，因此第一行为真；
+七杀与破军都不在这四宫内，第二行为假。
+
+**边界与陷阱**
+
+<Callout type="warn" title="空列表的返回值">
+`stars` 传空列表时，`is_surrounded` 与 `not_surrounded` 返回 `True`
+（「所有元素都满足」与「没有元素不满足」对空集都成立），
+`is_surrounded_one_of` 返回 `False`。调用前先确认列表非空。
+</Callout>
+
+---
+
+## flanking_palaces
+
+**用途**　取目标宫的夹宫：盘上紧邻它前后的两宫。
+
+**斗数含义**　「羊陀夹忌」「日月夹命」这类说法看的就是夹宫。
+夹宫与三方四正是两条不重叠的线索：三方四正问的是同一组能量彼此呼应，
+夹宫问的是这一宫左右两侧的处境。
+
+**签名**
+
+```python
+def flanking_palaces(self, index_or_name: int | PalaceName | str) -> FlankingPalaces | None
+```
+
+**参数**　同 `palace`，四种定位写法都支持。
+
+**返回值**　`FlankingPalaces | None`，两个 `Palace` 字段。定位不到时返回 `None`。
+
+| 字段 | 相对目标宫 | 说明 |
+| --- | --- | --- |
+| `previous` | -1 | 前一宫 |
+| `next` | +1 | 后一宫 |
+
+十二宫首尾相连，索引对 12 回绕：第 0 宫的前一宫是第 11 宫。
+另有 `astrolabe()` 取回两宫所属的星盘。
+
+五个判断方法与[三方四正](/zh/docs/python/surpalaces)同名同义，只是作用范围换成这两宫：
+
+| 方法 | 语义 |
+| --- | --- |
+| `have(stars: list[str]) -> bool` | 两宫合起来含列表中每一颗 |
+| `not_have(stars: list[str]) -> bool` | 两宫一颗都不含 |
+| `have_one_of(stars: list[str]) -> bool` | 两宫合起来至少含一颗 |
+| `have_mutagen(mutagen: Mutagen) -> bool` | 两宫中有任一宫带该生年四化 |
+| `not_have_mutagen(mutagen: Mutagen) -> bool` | 两宫都不带 |
+
+星耀既可以写 `MajorStar` / `MinorStar` 这些枚举，也可以写当前语言的星名。
+
+**示例**
+
+```python
+f = chart.flanking_palaces("soulPalace")
+
+print(f.previous.name, "/", f.next.name)
+print(f.have(["tianjiMaj", "tuoluoMin"]))
+print(f.have_one_of(["huoxingMin"]))
+
+w = chart.flanking_palaces("wealthPalace")
+print(w.previous.name, "/", w.next.name)
+print(w.have_mutagen("sihuaLu"), w.have_mutagen("sihuaJi"))
+```
+
+**输出**
+
+```text
+兄弟 / 父母
+True
+False
+疾厄 / 子女
+True True
+```
+
+命宫在午，夹它的是兄弟（巳）与父母（未）。天机坐兄弟、陀罗坐父母，分处两宫，
+`have` 仍然成立；火星坐夫妻，不在这两宫之内，因此 `have_one_of` 为 `False`。
+财帛在寅，夹它的疾厄坐天同、子女坐太阳，这张盘生年干庚使太阳化禄、天同化忌，
+于是禄与忌两问都为 `True`。
+
+**边界与陷阱**
+
+<Accordions>
+<Accordion title="判定在两宫合计的集合上做">
+`have(["A", "B"])` 问的是「A 和 B 都出现在这两宫里」，不要求它们同在其中一宫。
+要单看某一侧，直接对 `f.previous` / `f.next` 调宫位的
+[`has`](/zh/docs/python/palace#has--not_have--has_one_of)。
+</Accordion>
+<Accordion title="没有「排在边上所以缺一侧」的宫">
+索引对 12 回绕，十二宫每一宫都有完整的前后两宫。
+</Accordion>
+<Accordion title="空列表的返回值">
+`have` 与 `not_have` 在空列表下返回 `True`，`have_one_of` 返回 `False`。
+</Accordion>
+</Accordions>
+
+---
+
+## horoscope
+
+**用途**　以本盘为起点计算目标日期的运限。
+
+**签名**
+
+```python
+def horoscope(
+    self,
+    target_date: str | None = None,
+    target_time_index: int | None = None,
+) -> Horoscope
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `target_date` | `str \| None` | 否 | `None` | 目标公历日期；不传取今天 |
+| `target_time_index` | `int \| None` | 否 | `None` | 目标时辰索引；不传取此刻所属时辰 |
+
+**返回值**　`Horoscope`——持有本盘的运限对象，六个层级的宫位查询不必再传星盘。
+详见[运限对象](/zh/docs/python/horoscope)。
+
+**示例**
+
+```python
+h = chart.horoscope("2025-6-1", 0)
+
+print("大限", h.decadal.heavenly_stem + h.decadal.earthly_branch)
+print("流年", h.yearly.heavenly_stem + h.yearly.earthly_branch)
+
+# 两个参数都可省略，取当下
+now = chart.horoscope()
+```
+
+**输出**
+
+```text
+大限 庚辰
+流年 乙巳
+```
+
+---
+
+## to_text
+
+**用途**　星盘的语义化文本：面向语言模型与人的完整描述，`str(chart)` 等价。
+
+**签名**
+
+```python
+def to_text(
+    self,
+    *,
+    knowledge: bool | KnowledgePack | None = None,
+    config: PatternConfig | None = None,
+) -> str
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `knowledge` | `bool \| KnowledgePack \| None` | 否 | `None` | 释义材料：`True` 取排盘语言的内嵌默认包，`KnowledgePack` 用该包（自定义或合并后的包）；给出时释义内联在事实之后——格局列表后跟格局释义（含成立条件），每宫事实后跟该宫星耀释义（同宫主星组合在前），文末附 `## 四化释义` |
+| `config` | `PatternConfig \| None` | 否 | `None` | 格局判定口径，与 `patterns(config)` 同一入参；同时作用于文本的格局节与格局释义。`None` 取默认口径 |
+
+**返回值**　`str`——按排盘语言输出的 Markdown 子集：`# 命盘 …` 标题、`## 基本信息`、
+`## 十二宫总览`（表）、`## 格局`、`## 十二宫`（从命宫起每宫一段 `### `）。
+完整格式见[语义化文本](/zh/docs/guide/guides/to-text#格式约定)，释义的插入位置见
+[带释义的文本](/zh/docs/guide/guides/to-text#带释义的文本)。
+
+**示例**
+
+```python
+print(chart.to_text().splitlines()[0])
+
+text = chart.to_text(knowledge=True)
+print(len(chart.to_text()), len(text))
+print(" ".join(l for l in text.splitlines() if l.startswith("## ")))
+```
+
+**输出**
+
+```text
+# 命盘 2000-8-16 寅时 女
+3389 20767
+## 基本信息 ## 十二宫总览 ## 格局 ## 十二宫 ## 四化释义
+```
+
+**边界与陷阱**
+
+<Callout type="warn">
+`knowledge=True` 而排盘语言没有内嵌包（目前只有 zh-CN 有）抛 `IztroError`（`invalid_argument`），
+不会静默退回无释义；英文盘显式传一份 `KnowledgePack` 即可。
+</Callout>
+
+单宫与三方四正的文本见 `palace(...).to_text()` 与 `surrounded_palaces(...).to_text()`，
+格局文本见 `patterns_to_text`（[格局判定](/zh/docs/python/patterns)）。
+
+---
+
+## to_dict / to_json
+
+**用途**　把星盘导出成与 JS iztro 字段契约一致的 JSON。
+
+**签名**
+
+```python
+def to_dict(self) -> dict[str, Any]
+def to_json(self, **kwargs: Any) -> str
+```
+
+**参数**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `kwargs` | — | 否 | — | 仅 `to_json`：透传给 `json.dumps`，如 `indent=2`、`sort_keys=True` |
+
+`to_json` 默认 `ensure_ascii=False`，中文直接落在输出里而不是 `\uXXXX`。
+
+**返回值**　`to_dict` 返回底层 DTO 的**深拷贝**——camelCase 键、值按排盘语言翻译，
+另带 `*Key` 语言无关标识与排盘上下文。改它不会影响星盘。
+`to_json` 返回同一份数据的 JSON 字符串，内容与 iztro 的
+`JSON.stringify(astrolabe)` 逐键逐值对应。
+
+**示例**
+
+```python
+d = chart.to_dict()
+print(d["solarDate"], d["palaces"][4]["nameKey"])
+print(d["config"]["yearDivide"], d["genderKey"], d["timeIndex"])
+
+import json
+print(json.dumps({k: d[k] for k in ("gender", "solarDate", "lunarDate")},
+                 ensure_ascii=False))
+print(len(chart.to_json()) > 10000, chart.to_json()[:1])
+```
+
+**输出**
+
+```text
+2000-8-16 soulPalace
+normal female 2
+{"gender": "女", "solarDate": "2000-8-16", "lunarDate": "二〇〇〇年七月十七"}
+True {
+```
+
+<Callout type="info" title="键的顺序是字典序">
+底层 DTO 经原生扩展转成 Python `dict` 时按键名排序，
+因此 `to_dict()` / `to_json()` 的顶层键是 `body`、`bodyKey`、`chineseDate`…… 这个次序，
+不是 iztro 声明字段的次序。键名与取值逐个对应，只是排列不同；
+要固定次序请自己按需要挑键输出。
+</Callout>
+
+**边界与陷阱**
+
+<Callout type="warn" title="不要用 dataclasses.asdict 导出">
+`Astrolabe`、`Palace`、`Star` 都是 dataclass，但宫位与星耀各自持有一个指回本盘的
+引用（`_astrolabe` / `_palace`）。`dataclasses.asdict(chart)` 会顺着这条回指
+无限递归，最终 `RecursionError`。
+
+导出一律走 `to_dict()` / `to_json()`——它们直接拿底层 DTO，既不递归也不丢字段。
+</Callout>
+
+<Callout type="info" title="自定义表不在导出里">
+`config` 只回显六个开关。排盘时传的自定义四化 / 亮度表是**输入**而非结果，
+不进 DTO——这一点与 JS iztro 的字段契约一致。要记录用了哪张表，
+请在自己的调用侧保存 `ChartConfig`。
+</Callout>
+
+<Callout type="info">
+`Horoscope` 上有同名的一对方法，形状一致，见[运限对象](/zh/docs/python/horoscope#to_dict--to_json)。
+</Callout>

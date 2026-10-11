@@ -1,0 +1,285 @@
+---
+title: 星耀
+description: 三组星耀各自装什么，星耀分八类，亮度与四化标记怎么读，四组十二神是什么，以及星名对照表。
+---
+
+*适合：所有人。代码与标识对照表在页尾*
+
+每个宫位上的星耀分三组存放，另外还有四组「十二神」以单值形式挂在宫上。
+
+## 主星
+
+十四颗主星，是解读命盘的骨架。它们按紫微与天府两个系列的规则安放，
+十二宫里有的宫会有两颗，有的一颗都没有（称为**空宫**）。
+
+| 紫微系（六颗） | 天府系（八颗） |
+| --- | --- |
+| 紫微 | 天府 |
+| 天机 | 太阴 |
+| 太阳 | 贪狼 |
+| 武曲 | 巨门 |
+| 天同 | 天相 |
+| 廉贞 | 天梁 |
+| | 七杀 |
+| | 破军 |
+
+「空宫」判断的就是这一组是否为空。
+
+## 辅星
+
+十四颗辅星，按性质分四类：
+
+| 类别 | 成员 |
+| --- | --- |
+| 吉星（六吉） | 左辅、右弼、文昌、文曲、天魁、天钺 |
+| 煞星（六煞） | 擎羊、陀罗、火星、铃星、地空、地劫 |
+| 禄存 | 禄存 |
+| 天马 | 天马 |
+
+<Callout title="为什么禄存与天马要单拎出来">
+它们在传统分法里既非纯吉也非纯煞：禄存主财禄但畏空劫，天马主动主变但需见禄。
+判断时常要把它们与六吉六煞分开处理，因此各占一个类别，
+筛选时按类别过滤即可，不必按星名硬编码。
+</Callout>
+
+## 杂耀
+
+数十颗辅助性质的星，按来源分成年干系、年支系、月系、日系、时系几类，安星依据各不相同。
+杂耀分三类：
+
+| 类别 | 数量 | 成员 |
+| --- | --- | --- |
+| 桃花星 | 4 | 红鸾 `hongluan`、天喜 `tianxi`、天姚 `tianyao`、咸池 `xianchi` |
+| 解神 | 2 | 解神 `jieshen`、年解 `nianjie` |
+| 其余杂耀 | 32 | 见下 |
+
+默认派的 32 颗其余杂耀，按性质分组：
+
+| 分组 | 成员 |
+| --- | --- |
+| 贵显助力 | 三台 `santai`、八座 `bazuo`、恩光 `engguang`、天贵 `tiangui`、台辅 `taifu`、封诰 `fenggao`、龙池 `longchi`、凤阁 `fengge`、天官 `tianguan`、天福 `tianfu` |
+| 才艺与庇荫 | 天才 `tiancai`、天寿 `tianshou`、天巫 `tianwu`、天厨 `tianchu`、天德 `tiande`、月德 `yuede`、华盖 `huagai` |
+| 空亡类 | 天空 `tiankong`、旬空 `xunkong`、截路 `jielu`、空亡 `kongwang` |
+| 刑忌孤克 | 天刑 `tianxing`、孤辰 `guchen`、寡宿 `guasu`、破碎 `posui`、蜚廉 `feilian`、阴煞 `yinsha`、天哭 `tianku`、天虚 `tianxu`、天月 `tianyue` |
+| 伤使 | 天伤 `tianshang`、天使 `tianshi` |
+
+<Callout type="info" title="桃花星是什么">
+桃花星与情感、异性缘、人际吸引力相关，是解读感情与人际时最先看的一组。
+四颗里红鸾天喜偏正缘与喜庆，天姚咸池偏情欲与应酬。
+</Callout>
+
+<Callout type="warn" title="截路、空亡不是一颗星">
+默认派安的是**截路**与**空亡**两颗独立的星，不要写成「截空」。
+中州派（`algorithm = zhongzhou`）则改安**截空**、**劫杀**、**大耗**、**龙德**，
+不安截路与空亡，杂耀总数由 32 变成 34。见
+[Config 详解](/zh/docs/guide/guides/config#算法派别-algorithm)。
+</Callout>
+
+<Callout type="warn" title="四化只看主星与辅星">
+判断某宫有没有某个四化时，只检查主星与辅星，**不检查杂耀** —— 与 iztro 行为一致。
+</Callout>
+
+## 星耀分八类
+
+上面三组加起来正好覆盖全部类别：
+
+| 类别标识 | 出现在哪一组 | 一句话 |
+| --- | --- | --- |
+| `major` | 主星 | 十四主星，定盘面骨架 |
+| `soft` | 辅星 | 六吉 |
+| `tough` | 辅星 | 六煞 |
+| `lucun` | 辅星 | 禄存，单独成类 |
+| `tianma` | 辅星 | 天马，单独成类 |
+| `flower` | 杂耀 | 桃花星 |
+| `helper` | 杂耀 | 解神 |
+| `adjective` | 杂耀 | 其余杂耀 |
+
+判断「某宫见不见煞」这类需求，按类别过滤最稳 —— 换盘面语言星名会变，类别不会。
+
+## 亮度
+
+亮度描述一颗星落在某个地支位置上的强弱，共七级：
+
+| 盘上写作 | 全称 | 强弱 |
+| --- | --- | --- |
+| 庙 | 庙旺 | 最强 |
+| 旺 | 旺相 | |
+| 得 | 得地 | |
+| 利 | 利益 | |
+| 平 | 平和 | 中性 |
+| 不 | 不得地 | |
+| 陷 | 落陷 | 最弱 |
+
+同一颗星在不同宫位亮度不同，这由星与地支的固定对照表决定。杂耀通常没有亮度。
+
+<Callout title="非中文盘上的亮度是记号">
+英文、韩文等语言的词表没有亮度译名，输出的是 `[+3]`（庙）到 `[-3]`（陷）的记号。
+判断亮度请用标识而非文本，见[多语言输出](/zh/docs/guide/guides/i18n)。
+</Callout>
+
+## 四组十二神
+
+除了三组星耀，每个宫还挂着四个**单值**字段，各自来自一套十二神的循环安法。
+每组的十二个成员排满十二宫，每宫恰好一个。
+
+### 长生十二神
+
+依据**五行局与阴阳男女**起。描述一件事从萌生到消亡再重来的十二个阶段。
+
+长生 `changsheng` / 沐浴 `muyu` / 冠带 `guandai` / 临官 `linguan` /
+帝旺 `diwang` / 衰 `shuai` / 病 `bing` / 死 `si` / 墓 `mu` / 绝 `jue` /
+胎 `tai` / 养 `yang`
+
+### 博士十二神
+
+依据**禄存位置与阴阳男女**起。偏重才能、财禄与是非。
+
+博士 `boshi` / 力士 `lishi` / 青龙 `qinglong` / 小耗 `xiaohao` /
+将军 `jiangjun` / 奏书 `zhoushu` / 飞廉 `faylian` / 喜神 `xishen` /
+病符 `bingfu` / 大耗 `dahao` / 伏兵 `fubing` / 官府 `guanfu`
+
+### 岁前十二神
+
+依据**年支**起，恒顺行。偏重一年之内的吉凶事件。
+
+岁建 `suijian` / 晦气 `huiqi` / 丧门 `sangmen` / 贯索 `guansuo` /
+官符 `gwanfu` / 小耗 `xiaohao` / 大耗 `dahao` / 龙德 `longde` /
+白虎 `baihu` / 天德 `tiande` / 吊客 `diaoke` / 病符 `bingfu`
+
+<Callout>
+中州派把这一组里的**大耗**换成**岁破**（`suipo`）。
+</Callout>
+
+### 将前十二神
+
+依据**年支三合组**起，恒顺行。偏重动向、驿马与人事阻碍。
+
+将星 `jiangxing` / 攀鞍 `panan` / 岁驿 `suiyi` / 息神 `xiishen` /
+华盖 `huagai` / 劫煞 `jiesha` / 灾煞 `zhaisha` / 天煞 `tiansha` /
+指背 `zhibei` / 咸池 `xianchi` / 月煞 `yuesha` / 亡神 `wangshen`
+
+<Callout type="warn" title="标识不总是拼音">
+`faylian`（飞廉）、`gwanfu`（官符）、`xiishen`（息神）、`zhaisha`（灾煞）
+这几个标识与拼音不一致 —— 它们沿用 iztro 的原始词表键名，用来与同音的
+`feilian`（蜚廉，杂耀）、`guanfu`（官府，博士十二神）、`xishen`（喜神，博士十二神）区分。
+照抄标识，不要按拼音自己拼。
+</Callout>
+
+<Callout>
+运限层级还会带自己的岁前十二神与将前十二神，它们按运限年支重新起算，
+与本命盘上的这四组是两回事。见[运限](/zh/docs/guide/concepts/horoscope)。
+</Callout>
+
+## 在代码里怎么取
+
+### 遍历一个宫的星耀
+
+```python
+soul = chart.palace("soulPalace")
+
+for s in soul.major_stars + soul.minor_stars + soul.adjective_stars:
+    print(s.key, s.name, s.type, s.brightness, s.mutagen)
+```
+
+```text
+ziweiMaj 紫微 major 庙 None
+wenquMin 文曲 soft 陷 None
+fengge 凤阁 adjective None None
+tianfu 天福 adjective None None
+jielu 截路 adjective None None
+feilian 蜚廉 adjective None None
+nianjie 年解 helper None None
+```
+
+单颗星的字段：
+
+| 字段 | 含义 |
+| --- | --- |
+| `name` | 星名，按盘面语言翻译 |
+| `key` | 语言无关标识，如 `ziweiMaj` |
+| `type` | 八个类别之一 |
+| `scope` | 所属层级：`origin` 本命、`decadal` 大限、`yearly` 流年…… |
+| `brightness` / `brightnessKey` | 亮度，只有部分星有 |
+| `mutagen` / `mutagenKey` | 四化标记，只有被化到的星有 |
+
+### 四组十二神
+
+```python
+for p in chart.palaces:
+    print(p.name, p.changsheng12, p.boshi12, p.suiqian12, p.jiangqian12)
+```
+
+每个字段另有 `*_key` 版本（`changsheng12_key` 等），判断用它。
+
+### 查一颗星在哪
+
+<Tabs items={['Rust', 'Python', 'Go']}>
+<Tab value="Rust">
+
+```rust
+if let Some(star) = astrolabe.star(StarKey::ZiweiMaj) {
+    // StarRef 解引用即 Star，另可取所在宫
+    println!("{:?} {:?}", star.brightness, star.palace().name);
+}
+```
+
+</Tab>
+<Tab value="Python">
+
+```python
+from x_iztro.enums import MajorStar
+
+star = chart.star(MajorStar.ZIWEI)                 # 只要星
+star, palace = chart.star_in_palace(MajorStar.ZIWEI)   # 连所在宫一起
+```
+
+</Tab>
+<Tab value="Go">
+
+```go
+star, palace := chart.Star(iztro.StarZiweiMaj)
+```
+
+</Tab>
+</Tabs>
+
+查找会遍历三组，所以主星、辅星、杂耀都能查到；查不到返回空值。
+
+### 星名对照表
+
+同一颗星在不同盘面语言下文本不同，标识不变。英文词表来自 iztro 原词表，
+是意译而非音译，也不是英文命理界的通行译法 —— 只做展示，判断一律用标识。
+
+| 标识 | 中文 | 英文 |
+| --- | --- | --- |
+| `ziweiMaj` | 紫微 | emperor |
+| `tianjiMaj` | 天机 | advisor |
+| `taiyangMaj` | 太阳 | sun |
+| `wuquMaj` | 武曲 | warrior |
+| `tiantongMaj` | 天同 | fortunate |
+| `lianzhenMaj` | 廉贞 | judge |
+| `tianfuMaj` | 天府 | empress |
+| `taiyinMaj` | 太阴 | moon |
+| `tanlangMaj` | 贪狼 | wolf |
+| `jumenMaj` | 巨门 | advocator |
+| `tianxiangMaj` | 天相 | minister |
+| `tianliangMaj` | 天梁 | sage |
+| `qishaMaj` | 七杀 | marshal |
+| `pojunMaj` | 破军 | rebel |
+| `zuofuMin` | 左辅 | officer |
+| `youbiMin` | 右弼 | helper |
+| `wenchangMin` | 文昌 | scholar |
+| `wenquMin` | 文曲 | artist |
+| `tiankuiMin` | 天魁 | assistant |
+| `tianyueMin` | 天钺 | aide |
+| `qingyangMin` | 擎羊 | driven |
+| `tuoluoMin` | 陀罗 | tangled |
+| `huoxingMin` | 火星 | impulsive |
+| `lingxingMin` | 铃星 | spark |
+| `dikongMin` | 地空 | ideologue |
+| `dijieMin` | 地劫 | fickle |
+| `lucunMin` | 禄存 | money |
+| `tianmaMin` | 天马 | horse |
+
+杂耀与十二神的标识见上文各节。任意标识与任意语言之间的换算用翻译与反查函数，
+见[多语言输出](/zh/docs/guide/guides/i18n#标识与译名的换算)。

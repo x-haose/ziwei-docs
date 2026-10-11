@@ -1,0 +1,110 @@
+---
+title: Go
+description: go get 即用，内嵌 WebAssembly，无 cgo，保留交叉编译能力。
+---
+
+*适合：开发者*
+
+## 安装
+
+```bash
+go get github.com/x-haose/x-iztro/go/iztro
+```
+
+包里内嵌了核心库编译出的 WebAssembly 模块（`wasm32-wasip1`），
+经纯 Go 实现的 [wazero](https://wazero.io) 运行时调用。
+
+这意味着：**不需要 cgo，不需要本机安装 Rust 工具链，交叉编译照常可用**。
+wazero 的编译器后端只支持 amd64 与 arm64，其余架构走解释器，速度慢但结果相同。
+
+<Callout title="并发与冷启动">
+单个 wasm 实例不能并发使用，包内维护一个实例池（上限 `GOMAXPROCS`），
+多 goroutine 调用互不串行化，能真正并行。
+
+首次调用要编译 wasm 模块。编译产物落盘缓存（`os.UserCacheDir()` 下），
+所以只有第一次是 ~200ms，之后每个进程的首次调用 ~30ms。
+服务进程想让第一个请求就走热路径，在启动时调一次 `iztro.Warmup(ctx)`。
+热路径上一次排盘（含 JSON 编解码与内存拷贝）在 0.5ms 量级。
+</Callout>
+
+## 排盘
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/x-haose/x-iztro/go/iztro"
+)
+
+func main() {
+    chart, err := iztro.BySolar("2000-8-16", 2, iztro.GenderFemale, true, iztro.LanguageZhCN, nil)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println(chart.SolarDate)         // 阳历
+    fmt.Println(chart.LunarDate)         // 农历
+    fmt.Println(chart.ChineseDate)       // 四柱干支
+    fmt.Println(chart.Time, chart.TimeRange)
+    fmt.Println(chart.Sign, chart.Zodiac)
+    fmt.Println(chart.Soul, chart.Body)  // 命主、身主
+    fmt.Println(chart.FiveElementsClass)
+}
+```
+
+```text
+2000-8-16
+二〇〇〇年七月十七
+庚辰 甲申 丙午 庚寅
+寅时 03:00~05:00
+狮子座 龙
+破军 文昌
+木三局
+```
+
+最后一个参数是 `*Config`，传 `nil` 即取默认配置。`gender` 与 `language` 是具名类型
+`iztro.Gender` / `iztro.Language`（`iztro.GenderFemale`、`iztro.LanguageZhCN`，字面量也能直接传）。
+农历排盘用 `ByLunar`：`BySolar` 的 `fixLeap` 换成三态的 `iztro.LeapMonth`
+（`NotLeapMonth` / `LeapMonthKeep` / `LeapMonthFixed`），一个参数说清闰月怎么处理：
+
+```go
+iztro.ByLunar("2000-7-17", 2, iztro.GenderFemale, iztro.NotLeapMonth, iztro.LanguageZhCN, nil)
+```
+
+每个入口都有 `*Context` 变体（`BySolarContext`、`ByLunarContext` 等），
+`ctx` 用于取消等待实例池的排队。
+
+## 错误处理
+
+失败一律返回 `*iztro.Error`，带机器可读的 `Code`；用 `errors.Is` 按类别匹配：
+
+```go
+_, err := iztro.BySolar("2000-13-1", 2, iztro.GenderMale, true, iztro.LanguageZhCN, nil)
+if errors.Is(err, iztro.ErrInvalidDate) {
+    var e *iztro.Error
+    errors.As(err, &e)
+    fmt.Println(e.Code, e.Message)
+}
+```
+
+```text
+invalid_date invalid solar date '2000-13-1': month must be within 1-12
+```
+
+详见[错误处理](/zh/docs/guide/guides/errors)。
+
+## 接下来
+
+上面的例子只用到了排盘入口。完整的 API——十二宫定位、星耀判断、飞星、
+运限、安星模块、数据表、翻译——在 **[Go API 参考](/zh/docs/go)** 一栏，
+每个导出函数、类型与方法都有独立条目，附真实运行输出与边界说明。
+
+<Cards>
+  <Card title="排盘入口" href="/zh/docs/go/astro" description="BySolar、ByLunar、Config 与 Rearranged" />
+  <Card title="星盘对象" href="/zh/docs/go/astrolabe" description="字段、宫位定位、三方四正判断" />
+  <Card title="宫位对象" href="/zh/docs/go/palace" description="星耀判断、空宫判断与飞星族" />
+  <Card title="运限对象" href="/zh/docs/go/horoscope" description="六个层级与宫位查询" />
+</Cards>

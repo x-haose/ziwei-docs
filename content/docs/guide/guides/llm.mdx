@@ -1,0 +1,106 @@
+---
+title: 让 AI 解读命盘
+description: 排盘交给库、解读交给模型：怎么把 x-iztro 接进 AI 应用，以及几条踩过的坑。
+---
+
+*适合：开发者 · 产品与决策者*
+
+<Callout type="warn" title="别让模型自己排盘">
+这是最重要的一条。大模型算不准干支与安星 —— 它会给出**看起来合理但错误**的结果，
+而且错得毫无规律，你没法从输出上看出来。
+
+排盘是确定性计算，交给库；模型只负责解读。
+这条分工是把斗数接进 AI 应用的整个前提。
+</Callout>
+
+<Callout title="用 Cursor 或 Claude，不必自己接工具">
+托管的 MCP 已经把 `chart` 和 `to_text` 收成一行地址。
+见[给 AI 用](/zh/docs/guide/mcp)。下面是要嵌进自己产品时的做法。
+</Callout>
+
+## 最小接法
+
+把盘转成文本，前面加上你的分析要求，一起发给模型：
+
+```python
+from x_iztro import Astro
+
+astro = Astro()
+chart = astro.by_solar("2000-8-16", 2, "female")
+
+system = "你是紫微斗数分析师。基于给定命盘作答，不要编造盘上没有的信息。"
+user = f"""{chart.to_text()}
+
+{chart.horoscope("2025-1-1", 0).to_text()}
+
+请分析这个人 2025 年的事业运势。"""
+```
+
+生成的文本长什么样、格式怎么读，见[语义化文本](/zh/docs/guide/guides/to-text)。
+
+## 做成工具调用
+
+让模型自己决定什么时候排盘，比在应用里写死流程更灵活：
+模型负责理解需求与解读，x-iztro 负责算准。一个最小的工具定义：
+
+```python
+{
+    "name": "cast_chart",
+    "description": "紫微斗数排盘。给定阳历生日、时辰索引与性别，返回完整命盘的结构化描述。",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "solar_date": {"type": "string", "description": "阳历生日，格式 YYYY-M-D"},
+            "time_index": {"type": "integer", "minimum": 0, "maximum": 12,
+                           "description": "时辰索引，0=早子时(00-01)，12=晚子时(23-24)"},
+            "gender": {"type": "string", "enum": ["male", "female"]},
+        },
+        "required": ["solar_date", "time_index", "gender"],
+    },
+}
+```
+
+实现里调 `chart.to_text()` 返回文本即可。
+运限单独做一个工具（多收一个目标日期），让模型按需要取。
+
+<Callout title="时辰索引要在工具描述里说清楚">
+用户说的「晚上 11 点」对应索引 `12` 而不是 `0`，模型不会自己知道。
+把 0–12 的含义写进参数描述，或者干脆让工具收「出生时间 HH:MM」再由你换算。
+</Callout>
+
+## 用中文盘喂模型
+
+排盘结果本身与盘面语言无关，但 to_text 生成的文本会跟着变。默认的中文盘就是最好的选择：
+
+主流模型的中文命理术语能力都不差；而英文盘的星名走 iztro 的意译词表
+（紫微 `emperor`、七杀 `marshal`），亮度退化成 `[+3]` 这类记号，四化写成 `A`/`B`/`C`/`D`，
+这套写法与英文命理界的通行译法不同，模型未必认得。
+
+确实需要英文输出时，做法是**用中文盘喂模型、让模型用英文作答**，
+而不是换成英文盘。
+
+## 判断逻辑用标识
+
+如果你的应用要基于盘的内容做分支（例如「命宫有化忌时走另一套话术」），
+用[语言无关标识](/zh/docs/guide/guides/keys)判断，不要匹配文本 ——
+否则换一种盘面语言，所有分支都会静默失效。
+
+```python
+soul = chart.palace("soulPalace")
+if soul.has_mutagen("sihuaJi"):
+    prompt_style = "谨慎"
+```
+
+## 别把模型的解读当计算结果
+
+模型可能在解读里顺手「补」一些盘上没有的信息 ——
+多出一颗星、把大限区间说错、把宫名记混。
+
+如果解读要落进产品（写库、发推送、做决策），
+凡是可以从盘上直接取的事实，都从盘上取，不要从模型的自然语言里回抽。
+模型输出只当文字用。
+
+## 让 AI 读这份文档
+
+本站另有专供模型抓取的纯文本端点（`llms.txt`、单页 Markdown），
+见[给 AI 读的文档端点](/zh/docs/guide/guides/llms-txt)。
