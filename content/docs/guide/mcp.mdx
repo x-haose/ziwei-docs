@@ -6,7 +6,7 @@ icon: Bot
 
 *适合：第一次把紫微接进对话的人。不用装库，不用写代码。*
 
-Cursor 与 Claude 先装插件。插件里的 Skill 会先调用 `chart` / `to_text`，再解释。其他客户端按下面的 [B. 连接器](#b-连接器) 和 [C. 没有 Skill 时](#c-没有-skill-时) 来做。
+Cursor 与 Claude 先装插件。插件里的 Skill 会先调用 `chart` / `to_text`，再解释。ChatGPT 在 [B. 连接器](#b-连接器) 里导入插件市场。其余客户端填同一个地址，并贴上 [C. 没有 Skill 时](#c-没有-skill-时) 的说明。
 
 <Callout title="地址与保证">
 
@@ -25,11 +25,37 @@ Cursor 与 Claude 先装插件。插件里的 Skill 会先调用 `chart` / `to_t
 
 Cursor 与 Claude 先装插件。插件带上 Skill，Skill 会先调用 `chart` 或 `to_text`，再解释。
 
-Cursor 官方 Marketplace **尚未提交，现在不能在商店里一键安装**。Claude 用下面的市场命令，这是目前最短的正式安装通道。
-
 <Callout title="Skill 强制先调工具">
 Skill 与 [x-ziwei](https://github.com/x-haose/x-ziwei) 里的 `plugin/shared/skills/ziwei/SKILL.md` 相同。没有工具结果就没有盘。先调 `chart` 和/或 `to_text`，再用人话解释。不要发明第三个工具，没有 `lookup`。工具失败就说明错误，不要补假盘，也不要猜时辰。
 </Callout>
+
+### Claude Code
+
+**这是今天的用户安装。**
+
+```bash title="Claude"
+claude plugin install ziwei --marketplace x-haose/x-ziwei
+```
+
+<Steps>
+<Step>运行上面的命令。在会话里也可以先 `/plugin marketplace add x-haose/x-ziwei`，再 `/plugin install ziwei@x-ziwei`。</Step>
+<Step>用自然语言问一次排盘。回答前会先调用 `chart` 或 `to_text`。</Step>
+<Step>工具列表里应能看到 `chart` 和 `to_text`，没有第三个。</Step>
+</Steps>
+
+<Accordions>
+<Accordion title="贡献者：仅 --plugin-dir 自测">
+
+在 [x-ziwei](https://github.com/x-haose/x-ziwei) 仓库里直接加载，不经过市场。这只给贡献者自测：
+
+```bash title="Claude"
+claude --plugin-dir ./plugin/claude
+```
+
+</Accordion>
+</Accordions>
+
+插件里的 `.mcp.json` 使用 `type: http`（Claude Code 也接受别名 `streamable-http`）。无鉴权。组件都在插件根目录，不放进 `.claude-plugin/`。
 
 ### Cursor
 
@@ -63,54 +89,44 @@ Team / Enterprise 若关闭了 Allow Local Plugin Imports，这个目录不会�
 </Accordion>
 </Accordions>
 
-### Claude Code
-
-今天的安装用这一条命令，不用拷贝目录：
-
-```bash title="Claude"
-claude plugin install ziwei --marketplace x-haose/x-ziwei
-```
-
-在会话里：`/plugin marketplace add x-haose/x-ziwei`，然后 `/plugin install ziwei@x-ziwei`。
-
-插件里的 `.mcp.json` 使用 `type: http`（Claude Code 也接受别名 `streamable-http`）。无鉴权。组件都在插件根目录，不放进 `.claude-plugin/`。
-
-<Steps>
-<Step>运行上面的命令，或在会话里用 `/plugin` 从 `x-haose/x-ziwei` 安装 `ziwei`。</Step>
-<Step>用自然语言问一次排盘。回答前会先调用 `chart` 或 `to_text`。</Step>
-<Step>工具列表里应能看到 `chart` 和 `to_text`，没有第三个。</Step>
-</Steps>
-
-<Accordions>
-<Accordion title="贡献者：本地目录">
-
-在 [x-ziwei](https://github.com/x-haose/x-ziwei) 仓库里直接加载，不经过市场。这只给贡献者自测：
-
-```bash title="Claude"
-claude --plugin-dir ./plugin/claude
-```
-
-</Accordion>
-</Accordions>
-
 ## B. 连接器
 
-没有 Cursor / Claude 插件壳时，把同一个公网地址填进连接器。这些客户端不带本仓库的 Skill，装上之后把 [C 的说明](#c-没有-skill-时)贴进系统提示或自定义说明。
+ChatGPT 从插件市场导入，步骤在下面。没有插件壳的客户端，把同一个公网地址填进连接器。这些连接不带本仓库的 Skill，装上之后把 [C 的说明](#c-没有-skill-时)贴进系统提示或自定义说明。
 
 下面只写当前文档里能核对的入口。没有官方插件壳的产品，不要当成已经上架。
 
 ### ChatGPT
 
-网页打开 [ChatGPT Plugins](https://chatgpt.com/plugins)。支持 SSE 与 streaming HTTP。这是用户自己添加的自定义 MCP，不是已发布的目录插件。工作区权限和 Lockdown 仍适用。
+今天的安装：**插件 → 添加 → 添加插件市场**。来源填 GitHub 仓库，授权后导入市场，再安装 `ziwei`。公开插件目录的上架还没就绪。
+
+同一个 **添加** 菜单里，三项各做各的：
+
+- **添加插件市场**：从 GitHub 导入市场。安装 ziwei 走这里。
+- **创建插件**：新建一个插件包。用户安装 ziwei 不点这项。
+- **录制技能**：把一次操作录成技能。这项不安装 MCP。
 
 <Steps>
-<Step>点加号，选 Add custom MCP server。</Step>
-<Step>Connection 里 Server URL 填 `https://ziwei.x-haose.com/mcp`。认证选 No authentication。</Step>
-<Step>确认风险提示后 Create as a plugin。装上之后在对话里用 `@` 选中。</Step>
-<Step>把 [C 的说明](#c-没有-skill-时)贴进自定义说明。</Step>
+<Step>打开插件，点添加，选添加插件市场。</Step>
+<Step>官方管理员表单：来源填 `https://github.com/x-haose/x-ziwei`，路径留空。仓库根目录已有 `.claude-plugin/marketplace.json`。Codex 与 ChatGPT 还会找 `.agents/plugins/marketplace.json`，仓库正在补这个文件。不要填清单文件名。分支、标签或提交留空，用默认分支。</Step>
+<Step>授权 GitHub，导入市场。</Step>
+<Step>导入完成后安装 `ziwei`。对话里输入 `@` 选用。</Step>
 </Steps>
 
-步骤见 [Add custom MCP server](https://developers.openai.com/api/docs/guides/custom-mcp-server)。
+官方步骤写的是工作区管理员：管理控制台 → 插件 → 添加 → **导入插件市场**，字段是**来源**和**路径**，确认按钮也叫**导入插件市场**。个人客户端菜单上的字是「添加插件市场」。这两张表单的字段是否一致，待真机确认。见[从 GitHub 导入和同步插件市场](https://help.openai.com/en/articles/20001504-importing-and-syncing-plugin-marketplaces-from-github)（[中文](https://help.openai.com/zh-hans-cn/articles/20001504)）。
+
+<Callout type="warn" title="网页端要另验">
+官方说明：导入的插件若在 `mcp.json` 或 `.mcp.json` 里声明了 MCP，可能被标成**仅限桌面端**（Desktop only），远程 HTTPS 也一样。标了仅限桌面端的插件不能在网页版 ChatGPT 里运行。ziwei 的插件带 `.mcp.json`。网页能不能用，真机要验。
+</Callout>
+
+<Accordions>
+<Accordion title="备用：自定义 MCP">
+
+这是另一条路。URL 填 `https://ziwei.x-haose.com/mcp`，无鉴权，然后 Create、安装，对话里用 `@` 选用。上面的添加插件市场不走这个地址。
+
+这条路没有插件里的 Skill，把 [C 的说明](#c-没有-skill-时)贴进自定义说明。官方英文文档称该入口为 Add custom MCP server，认证项是 No authentication，确认后是 Create as a plugin。协议支持 SSE 与 streaming HTTP。见 [Add custom MCP server](https://developers.openai.com/api/docs/guides/custom-mcp-server)。
+
+</Accordion>
+</Accordions>
 
 ### Grok
 
