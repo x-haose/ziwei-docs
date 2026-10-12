@@ -1,44 +1,185 @@
 ---
 title: MCP
-description: 把 https://ziwei.x-haose.com/mcp 交给任何支持远程 MCP（Streamable HTTP）的客户端。Cursor、Claude、ChatGPT、Grok 都是例子。模型排盘、用白话讲盘。chart 与 to_text 已冻，与 iztro v2.6.1 逐字段对齐。
+description: 公网只有 https://ziwei.x-haose.com/mcp。Cursor 与 Claude 先装插件，Skill 会先调 chart / to_text。ChatGPT、Grok、Codex 填同一地址。chart 与 to_text 已冻，与 iztro v2.6.1 逐字段对齐。
 icon: Bot
 ---
 
-*适合：任何支持远程 MCP（Streamable HTTP）的客户端。Cursor、Claude、ChatGPT、Grok 都是例子。不用装库，不用写代码*
+*适合：任何支持远程 MCP（Streamable HTTP）的客户端。Cursor、Claude 先装插件。ChatGPT、Grok、Codex 填同一地址。不用装库，不用写代码*
 
-紫微斗数，一行地址交给模型。
-
-报出公历、时辰和性别，模型自己去排盘；再请它用白话讲这张盘。
-排盘不是模型心算的——它调用已经冻住的两个工具，结果与 JS [iztro](https://github.com/SylarLong/iztro) v2.6.1 逐字段对齐，
-716,314 例金标守着这条线。解读仍归模型，这一页不替它下结论。
-
-## 这一行
+紫微斗数，公网只有这一行。Cursor 与 Claude 的接法是装插件：插件把 Skill 和这个地址绑在一起。
 
 ```text title="MCP"
 https://ziwei.x-haose.com/mcp
 ```
 
-客户端只填这个地址。不用克隆仓库，不用装 Python，不用自己起服务。
+Streamable HTTP，无鉴权。工具只有 `chart` 和 `to_text`。任何支持远程 MCP 的客户端都能用这一行。本地 stdio 进程用不上：这是公开的 HTTP，没有要启动的命令。
 
 三件事让这一行可以放心交出去：
 
 - **与 iztro v2.6.1 逐字段对齐。** 716,314 例金标（71 万+），允许的差异是 0。这是复现口径，不是流派裁决。见[准确性保证](/zh/docs/guide/about/accuracy)。
 - **契约可钉。** 工具只有 `chart` 和 `to_text`。名字、必填字段、返回形状已经冻住，写在这一页的后半。
-- **一行 URL 即用。** 公开的 Streamable HTTP。任何支持这种远程 MCP 的客户端都只填这一行。本地 stdio 进程用不上。
+- **先装插件。** 有插件壳就装插件，Skill 会强制先调工具。没有壳的客户端填这一行，再贴[说明](#c-没有-skill-时)。
 
 <Callout title="浏览器打开它看不到文章">
 `/mcp` 是给客户端连的端点，不是文档页。要读的是这一页；要复制的是上面那一行。
 </Callout>
 
-## 常见客户端
+## A. 装插件
 
-同一行地址，不用登录。下面是 Cursor、Claude、ChatGPT、Grok 的填法。
-任何支持远程 MCP（Streamable HTTP）的客户端都可以用这一行。
+Cursor 与 Claude Code 有插件。插件带上 Skill，Skill 要求先调 `chart` 或 `to_text`，再解释。Cursor Marketplace 与 Claude 官方目录本期不提交。
 
-### 装进 Cursor
+<Callout title="Skill 强制先调工具">
+Skill 与 [x-ziwei](https://github.com/x-haose/x-ziwei) 里的 `plugin/shared/skills/ziwei/SKILL.md` 相同。没有工具结果就没有盘。先调 `chart` 和/或 `to_text`，再用人话解释。不要发明第三个工具，没有 `lookup`。工具失败就说明错误，不要补假盘，也不要猜时辰。
+</Callout>
 
-用户级配置写在 `~/.cursor/mcp.json`，只给当前项目用就写在项目里的 `.cursor/mcp.json`。
-也可以从 Cursor Settings → MCP 打开同一份文件。
+### Cursor
+
+在 [x-ziwei](https://github.com/x-haose/x-ziwei) 仓库根目录执行。拷贝进本地插件目录，不要指到仓库外的符号链接：
+
+```bash title="Cursor"
+mkdir -p ~/.cursor/plugins/local
+rm -rf ~/.cursor/plugins/local/ziwei
+cp -a plugin/cursor ~/.cursor/plugins/local/ziwei
+```
+
+<Steps>
+<Step>执行上面的命令。安装目录必须自带 `skills/ziwei/SKILL.md`，Cursor 不接受跳出插件根目录的路径。</Step>
+<Step>重载窗口（Developer: Reload Window）。</Step>
+<Step>在 Customize 里确认插件 `ziwei`、技能，以及 MCP `https://ziwei.x-haose.com/mcp`。</Step>
+<Step>用自然语言问一次，例如「阳历 2000-8-16 寅时女命，排紫微盘」。回答前必须先调用 `chart` 或 `to_text`。</Step>
+</Steps>
+
+<Callout type="warn" title="本地插件可能被关掉">
+Team / Enterprise 若关闭了 Allow Local Plugin Imports，这个目录不会被加载。同名市场插件已安装时，市场安装优先于本地副本。
+</Callout>
+
+### Claude Code
+
+两条路都不经过官方市场。在 [x-ziwei](https://github.com/x-haose/x-ziwei) 仓库里操作。
+
+本地目录，直接加载：
+
+```bash title="Claude"
+claude --plugin-dir ./plugin/claude
+```
+
+从本仓库安装。仓库根的 `.claude-plugin/marketplace.json` 是本仓库的插件目录，用来让下面两条命令找到 `plugin/claude`。它不是 Claude 官方插件市场。
+
+```bash title="Claude"
+claude plugin marketplace add x-haose/x-ziwei
+claude plugin install ziwei@x-ziwei
+```
+
+会话里对应 `/plugin marketplace add x-haose/x-ziwei`，再安装 `ziwei@x-ziwei`。
+
+插件里的 `.mcp.json` 使用 `type: http`（Claude Code 也接受别名 `streamable-http`）。无鉴权。组件都在插件根目录，不放进 `.claude-plugin/`。
+
+<Steps>
+<Step>用 `--plugin-dir`，或用上面的 marketplace 命令装上 `ziwei@x-ziwei`。</Step>
+<Step>用自然语言问一次排盘。回答前必须先调用 `chart` 或 `to_text`。</Step>
+<Step>工具列表里应能看到 `chart` 和 `to_text`，没有第三个。</Step>
+</Steps>
+
+## B. 连接器
+
+没有 Cursor / Claude 插件壳时，把同一个公网地址填进连接器。这些客户端不带本仓库的 Skill，装上之后把 [C 的说明](#c-没有-skill-时)贴进系统提示或自定义说明。
+
+下面只写当前文档里能核对的入口。没有官方插件壳的产品，不要当成已经上架。
+
+### ChatGPT
+
+网页打开 [ChatGPT Plugins](https://chatgpt.com/plugins)。支持 SSE 与 streaming HTTP。这是用户自己添加的自定义 MCP，不是已发布的目录插件。工作区权限和 Lockdown 仍适用。
+
+<Steps>
+<Step>点加号，选 Add custom MCP server。</Step>
+<Step>Connection 里 Server URL 填 `https://ziwei.x-haose.com/mcp`。认证选 No authentication。</Step>
+<Step>确认风险提示后 Create as a plugin。装上之后在对话里用 `@` 选中。</Step>
+<Step>把 [C 的说明](#c-没有-skill-时)贴进自定义说明。</Step>
+</Steps>
+
+步骤见 [Add custom MCP server](https://developers.openai.com/api/docs/guides/custom-mcp-server)。
+
+### Grok
+
+网页打开 [grok.com/connectors](https://grok.com/connectors)，**New Connector** → **Custom**，URL 填 `https://ziwei.x-haose.com/mcp`。本服务无鉴权；对话框若要求认证，留空或不做 OAuth。Grok Business / Enterprise 要先由团队管理员在控制台加连接器，成员才能用。见 [Connectors](https://docs.x.ai/grok/connectors)。
+
+Grok Build 也可以写进配置。命令会记到 `~/.grok/config.toml`：
+
+```bash title="Grok"
+grok mcp add --transport http ziwei https://ziwei.x-haose.com/mcp
+```
+
+或手写：
+
+```toml title="Grok"
+[mcp_servers.ziwei]
+url = "https://ziwei.x-haose.com/mcp"
+```
+
+见 [MCP Servers](https://docs.x.ai/build/features/mcp-servers)。装上之后同样贴 [C 的说明](#c-没有-skill-时)。
+
+### Codex
+
+Codex 的 Streamable HTTP 条目在 `~/.codex/config.toml`（受信任的项目也可用项目里的 `.codex/config.toml`）。ChatGPT 桌面端、Codex CLI、IDE 扩展共用这份配置。
+
+```toml title="Codex"
+[mcp_servers.ziwei]
+url = "https://ziwei.x-haose.com/mcp"
+```
+
+等价命令：
+
+```bash title="Codex"
+codex mcp add ziwei --url https://ziwei.x-haose.com/mcp
+```
+
+不要加 bearer token，也不要跑 `codex mcp login`。没有任何凭证来源时，Codex 可以无认证连接。桌面端或 IDE 里选 Streamable HTTP，URL 填同一地址。见 [Model Context Protocol](https://developers.openai.com/codex/mcp)。
+
+OpenAI Agents SDK 走 Responses 托管调用时，用 `HostedMCPTool`，`server_url` 为 `https://ziwei.x-haose.com/mcp`。进程内自己连则用 `MCPServerStreamableHttp`，`params["url"]` 为同一地址。两种都不要附带 Authorization。
+
+## C. 没有 Skill 时
+
+能填远程 MCP URL 的客户端，地址都是 `https://ziwei.x-haose.com/mcp`，不要加认证头。没有 Skill 通道时，把下面其中一段贴进系统提示或自定义说明。规则与插件 Skill 相同。
+
+### 中文
+
+```text title="说明"
+你是紫微斗数解读助手。公网 MCP 只有 https://ziwei.x-haose.com/mcp，工具只有 chart 与 to_text。
+
+硬规则：
+- 禁止凭记忆编造命盘、星曜、四化或大限。没有工具结果就没有盘。
+- 先调用 chart 和/或 to_text，再用人话解释。
+- 不要发明第三个工具，没有 lookup。
+- 解释属于你。引擎只排盘，盘面与 iztro 金标对齐。不要改写成另一套星曜。
+- 工具失败就说明错误，不要补假盘，也不要猜时辰。
+
+阳历最短入参（chart 与 to_text 相同）：calendar=solar，date=YYYY-M-D，timeIndex=0-12，gender=male 或 female。
+时辰不明先问。农历必须另给 leap：notLeap、leap 或 leapFixed。
+要盘面用 chart；要 Markdown 用 to_text。运限时 chart 同时给 targetDate 与 targetTimeIndex；to_text 设 includeHoroscope=true 并带同样的目标日、时。
+```
+
+### English
+
+```text title="Instructions"
+You interpret Zi Wei Dou Shu charts. The only MCP endpoint is https://ziwei.x-haose.com/mcp. The only tools are chart and to_text.
+
+Rules:
+- Never invent a chart, star placement, mutagen, or decade from memory. No tool result means no chart.
+- Always call chart and/or to_text first, then interpret in plain language.
+- Do not invent a third tool. There is no lookup.
+- Interpretation belongs to you. The engine only casts the chart and is gold-aligned with iztro. Do not rewrite the result into a different set of stars.
+- If a tool fails, say so. Do not fill in a fake chart, and do not guess the hour.
+
+Solar minimum for both tools: calendar=solar, date=YYYY-M-D, timeIndex=0-12, gender=male or female.
+Ask when the hour is unknown. Lunar dates also require leap: notLeap, leap, or leapFixed.
+Use chart for the structured chart and to_text for Markdown. For a horoscope, pass targetDate and targetTimeIndex to chart; set includeHoroscope=true on to_text with the same target date and hour.
+```
+
+## 兼容 / 调试
+
+手贴 JSON 只接上 URL，不带 Skill。有插件时走 [A](#a-装插件)。这里是插件没装上、或客户端只有一份配置文件时的形状。
+
+Cursor 用户级写在 `~/.cursor/mcp.json`，只给当前项目用就写在项目里的 `.cursor/mcp.json`。插件内部的 `mcp.json` 也是这一份：
 
 ```json title="Cursor"
 {
@@ -50,15 +191,7 @@ https://ziwei.x-haose.com/mcp
 }
 ```
 
-<Steps>
-<Step>把上面的 JSON 贴进配置。已经有别的服务器时，只把 `"ziwei"` 这一段合并进 `mcpServers`，不要整份覆盖。</Step>
-<Step>回到 MCP 设置，确认 `ziwei` 已连接。没亮起来就重载一次窗口。</Step>
-<Step>新开一个对话，用[下面这两句](#装上之后怎么说)试一次。</Step>
-</Steps>
-
-### 装进 Claude
-
-比 Cursor 多一个 `"type": "http"`。Claude Code 写在项目根目录的 `.mcp.json`，或写进用户配置里的 `mcpServers`。
+Claude 比 Cursor 多一个 `"type": "http"`。Claude Code 写在项目根目录的 `.mcp.json`，或写进用户配置里的 `mcpServers`。桌面端和 claude.ai 的自定义连接器要 JSON 时，用同一份：
 
 ```json title="Claude"
 {
@@ -71,62 +204,23 @@ https://ziwei.x-haose.com/mcp
 }
 ```
 
-Claude 桌面端和 claude.ai 走自定义连接器时，地址填同一行 `https://ziwei.x-haose.com/mcp`。若连接器要一份 JSON，用上面这份。
+Cascade（Windsurf / Devin Desktop）的远程 HTTP 条目用 `serverUrl`。在 MCP 菜单里打开配置文件再写入。当前 Devin 文档的默认路径是 `~/.config/devin/mcp_config.json`（设置了 `XDG_CONFIG_HOME` 时走该目录）：
 
-<Steps>
-<Step>保存配置，或在连接器里贴上地址。</Step>
-<Step>新开一个对话。工具列表里应能看到 `chart` 和 `to_text`，没有第三个。</Step>
-<Step>用[下面这两句](#装上之后怎么说)试一次。</Step>
-</Steps>
-
-### ChatGPT / GPT
-
-ChatGPT 网页把远程 MCP 当成自定义插件。支持的协议是 SSE 和 streaming HTTP。
-
-<Steps>
-<Step>打开 ChatGPT 网页，进入 Plugins，点 +，选择 Add custom MCP server。</Step>
-<Step>填一个名字。Server URL 填 `https://ziwei.x-haose.com/mcp`，authentication 选 no auth（不需要认证）。</Step>
-<Step>确认风险提示，选择 Create as a plugin。装上这个插件，新开一个对话，用[下面这两句](#装上之后怎么说)试一次。</Step>
-</Steps>
-
-步骤见 [Add custom MCP server](https://developers.openai.com/api/docs/guides/custom-mcp-server)。
-
-Codex（ChatGPT 桌面端、Codex CLI、IDE 扩展共用 `~/.codex/config.toml`）对 Streamable HTTP 只写地址。不配 token、也不配 OAuth 时，按无认证连接：
-
-```toml title="Codex"
-[mcp_servers.ziwei]
-url = "https://ziwei.x-haose.com/mcp"
+```json title="Cascade"
+{
+  "mcpServers": {
+    "ziwei": {
+      "serverUrl": "https://ziwei.x-haose.com/mcp"
+    }
+  }
+}
 ```
 
-见 [Model Context Protocol](https://developers.openai.com/codex/mcp)。
-
-### Grok
-
-网页：打开 [grok.com/connectors](https://grok.com/connectors)，New Connector → Custom，贴上同一行 `https://ziwei.x-haose.com/mcp`，不需要认证。见 [Connectors](https://docs.x.ai/grok/connectors)。
-
-命令行：
-
-```bash title="Grok"
-grok mcp add --transport http ziwei https://ziwei.x-haose.com/mcp
-```
-
-或写进 `~/.grok/config.toml`：
-
-```toml title="Grok"
-[mcp_servers.ziwei]
-url = "https://ziwei.x-haose.com/mcp"
-```
-
-见 [MCP Servers](https://docs.x.ai/build/features/mcp-servers)。
-
-### 其他客户端
-
-客户端支持远程 MCP / Streamable HTTP 时，只填 `https://ziwei.x-haose.com/mcp`。
-本地 stdio MCP 是客户端去拉起一个本机进程，这里用不上：这一行是公开的 HTTP。
+已经有别的服务器时，只把 `"ziwei"` 这一段合并进去，不要整份覆盖。本地 stdio MCP 用不上。
 
 ## 装上之后怎么说
 
-不必背参数名。用白话说，模型自己去填。
+不必背参数名。用白话说，模型自己去填。装了插件时，也可以直接说「阳历 2000-8-16 寅时女命，排紫微盘」。回答前必须先调用工具。
 
 | 你说 | 模型调用 |
 | --- | --- |
