@@ -1,32 +1,31 @@
 ---
 title: MCP
-description: 公网只有 https://ziwei.x-haose.com/mcp。Cursor 与 Claude 先装插件，Skill 会先调 chart / to_text。ChatGPT、Grok、Codex 填同一地址。chart 与 to_text 已冻，与 iztro v2.6.1 逐字段对齐。
+description: 紫微斗数的公开 MCP，所有客户端共用一个地址。
 icon: Bot
 ---
 
-*适合：任何支持远程 MCP（Streamable HTTP）的客户端。Cursor、Claude 先装插件。ChatGPT、Grok、Codex 填同一地址。不用装库，不用写代码*
+*适合：第一次把紫微接进对话的人。不用装库，不用写代码。*
 
-紫微斗数，公网只有这一行。Cursor 与 Claude 的接法是装插件：插件把 Skill 和这个地址绑在一起。
+Cursor 与 Claude 先装插件。插件里的 Skill 会先调用 `chart` / `to_text`，再解释。其他客户端按下面的 [B. 连接器](#b-连接器) 和 [C. 没有 Skill 时](#c-没有-skill-时) 来做。
 
-```text title="MCP"
-https://ziwei.x-haose.com/mcp
-```
+<Callout title="地址与保证">
 
-Streamable HTTP，无鉴权。工具只有 `chart` 和 `to_text`。任何支持远程 MCP 的客户端都能用这一行。本地 stdio 进程用不上：这是公开的 HTTP，没有要启动的命令。
+- 地址：`https://ziwei.x-haose.com/mcp`。Streamable HTTP，无鉴权。
+- `chart` 与 `to_text` 已冻结，与 iztro v2.6.1 逐字段对齐。716,314 例金标，允许的差异是 0。这是复现口径，不是流派裁决。见[准确性保证](/zh/docs/guide/about/accuracy)。
 
-三件事让这一行可以放心交出去：
+</Callout>
 
-- **与 iztro v2.6.1 逐字段对齐。** 716,314 例金标（71 万+），允许的差异是 0。这是复现口径，不是流派裁决。见[准确性保证](/zh/docs/guide/about/accuracy)。
-- **契约可钉。** 工具只有 `chart` 和 `to_text`。名字、必填字段、返回形状已经冻住，写在这一页的后半。
-- **先装插件。** 有插件壳就装插件，Skill 会强制先调工具。没有壳的客户端填这一行，再贴[说明](#c-没有-skill-时)。
+本地 stdio 用不上：这是公开的 HTTP，没有要启动的命令。名字、必填字段和返回形状写在这一页的后半。
 
 <Callout title="浏览器打开它看不到文章">
-`/mcp` 是给客户端连的端点，不是文档页。要读的是这一页；要复制的是上面那一行。
+`/mcp` 是给客户端连的端点，不是文档页。要读的是这一页；要复制的是上面的地址。
 </Callout>
 
 ## A. 装插件
 
-Cursor 与 Claude Code 有插件。插件带上 Skill，Skill 要求先调 `chart` 或 `to_text`，再解释。Cursor Marketplace 与 Claude 官方目录本期不提交。
+Cursor 与 Claude 先装插件。插件带上 Skill，Skill 会先调用 `chart` 或 `to_text`，再解释。
+
+Cursor 官方 Marketplace **尚未提交，现在不能在商店里一键安装**。Claude 用下面的市场命令，这是目前最短的正式安装通道。
 
 <Callout title="Skill 强制先调工具">
 Skill 与 [x-ziwei](https://github.com/x-haose/x-ziwei) 里的 `plugin/shared/skills/ziwei/SKILL.md` 相同。没有工具结果就没有盘。先调 `chart` 和/或 `to_text`，再用人话解释。不要发明第三个工具，没有 `lookup`。工具失败就说明错误，不要补假盘，也不要猜时辰。
@@ -34,7 +33,22 @@ Skill 与 [x-ziwei](https://github.com/x-haose/x-ziwei) 里的 `plugin/shared/sk
 
 ### Cursor
 
-在 [x-ziwei](https://github.com/x-haose/x-ziwei) 仓库根目录执行。拷贝进本地插件目录，不要指到仓库外的符号链接：
+使用者的步骤是安装、重载、用自然语言问，全程不用终端。
+
+官方 Marketplace **尚未提交，现在不能在商店里点安装**。不要把下面的步骤当成今天就能在商店里完成。商店上架之后，从 Marketplace 一键安装即可。
+
+Team / Enterprise 今天可以走仓库导入，这仍不是公开商店：Dashboard → Plugins & MCPs → Import，由管理员从 [x-ziwei](https://github.com/x-haose/x-ziwei) 仓库导入。成员在 Cursor 里启用该插件。
+
+<Steps>
+<Step>安装插件。Team / Enterprise 用上面的仓库导入；商店上架之后，在 Marketplace 一键安装。</Step>
+<Step>重载窗口（Developer: Reload Window）。</Step>
+<Step>用自然语言问一次，例如「阳历 2000-8-16 寅时女命，排紫微盘」。回答前会先调用 `chart` 或 `to_text`。</Step>
+</Steps>
+
+<Accordions>
+<Accordion title="贡献者 / 未上架时自测">
+
+个人环境在商店上架前，只能把插件拷进本地目录。这不是使用者的安装步骤。在 [x-ziwei](https://github.com/x-haose/x-ziwei) 仓库根目录执行，拷贝进本地插件目录，不要指到仓库外的符号链接：
 
 ```bash title="Cursor"
 mkdir -p ~/.cursor/plugins/local
@@ -42,43 +56,42 @@ rm -rf ~/.cursor/plugins/local/ziwei
 cp -a plugin/cursor ~/.cursor/plugins/local/ziwei
 ```
 
-<Steps>
-<Step>执行上面的命令。安装目录必须自带 `skills/ziwei/SKILL.md`，Cursor 不接受跳出插件根目录的路径。</Step>
-<Step>重载窗口（Developer: Reload Window）。</Step>
-<Step>在 Customize 里确认插件 `ziwei`、技能，以及 MCP `https://ziwei.x-haose.com/mcp`。</Step>
-<Step>用自然语言问一次，例如「阳历 2000-8-16 寅时女命，排紫微盘」。回答前必须先调用 `chart` 或 `to_text`。</Step>
-</Steps>
+安装目录必须自带 `skills/ziwei/SKILL.md`，Cursor 不接受跳出插件根目录的路径。拷贝后重载窗口，在 Customize 里确认插件 `ziwei`、技能，以及 MCP `https://ziwei.x-haose.com/mcp`。
 
-<Callout type="warn" title="本地插件可能被关掉">
 Team / Enterprise 若关闭了 Allow Local Plugin Imports，这个目录不会被加载。同名市场插件已安装时，市场安装优先于本地副本。
-</Callout>
+
+</Accordion>
+</Accordions>
 
 ### Claude Code
 
-两条路都不经过官方市场。在 [x-ziwei](https://github.com/x-haose/x-ziwei) 仓库里操作。
+今天的安装用这一条命令，不用拷贝目录：
 
-本地目录，直接加载：
+```bash title="Claude"
+claude plugin install ziwei --marketplace x-haose/x-ziwei
+```
+
+在会话里：`/plugin marketplace add x-haose/x-ziwei`，然后 `/plugin install ziwei@x-ziwei`。
+
+插件里的 `.mcp.json` 使用 `type: http`（Claude Code 也接受别名 `streamable-http`）。无鉴权。组件都在插件根目录，不放进 `.claude-plugin/`。
+
+<Steps>
+<Step>运行上面的命令，或在会话里用 `/plugin` 从 `x-haose/x-ziwei` 安装 `ziwei`。</Step>
+<Step>用自然语言问一次排盘。回答前会先调用 `chart` 或 `to_text`。</Step>
+<Step>工具列表里应能看到 `chart` 和 `to_text`，没有第三个。</Step>
+</Steps>
+
+<Accordions>
+<Accordion title="贡献者：本地目录">
+
+在 [x-ziwei](https://github.com/x-haose/x-ziwei) 仓库里直接加载，不经过市场。这只给贡献者自测：
 
 ```bash title="Claude"
 claude --plugin-dir ./plugin/claude
 ```
 
-从本仓库安装。仓库根的 `.claude-plugin/marketplace.json` 是本仓库的插件目录，用来让下面两条命令找到 `plugin/claude`。它不是 Claude 官方插件市场。
-
-```bash title="Claude"
-claude plugin marketplace add x-haose/x-ziwei
-claude plugin install ziwei@x-ziwei
-```
-
-会话里对应 `/plugin marketplace add x-haose/x-ziwei`，再安装 `ziwei@x-ziwei`。
-
-插件里的 `.mcp.json` 使用 `type: http`（Claude Code 也接受别名 `streamable-http`）。无鉴权。组件都在插件根目录，不放进 `.claude-plugin/`。
-
-<Steps>
-<Step>用 `--plugin-dir`，或用上面的 marketplace 命令装上 `ziwei@x-ziwei`。</Step>
-<Step>用自然语言问一次排盘。回答前必须先调用 `chart` 或 `to_text`。</Step>
-<Step>工具列表里应能看到 `chart` 和 `to_text`，没有第三个。</Step>
-</Steps>
+</Accordion>
+</Accordions>
 
 ## B. 连接器
 
