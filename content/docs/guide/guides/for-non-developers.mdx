@@ -14,7 +14,7 @@ x-iztro 是一个**排盘引擎**：给它出生日期、时辰、性别，它�
 需要由工程师装进你们自己的产品里。
 
 <Callout title="用 Cursor 或 Claude？不用找工程师">
-一行地址就能让模型自己排盘、用白话讲盘。见[给 AI 用](/zh/docs/guide/mcp)。
+先装插件，模型会先排盘、再用白话讲盘。见[给 AI 用](/zh/docs/guide/mcp)。
 </Callout>
 
 ## 它能做什么
@@ -53,7 +53,7 @@ x-iztro 排一张盘是毫秒级的，几十万条数据在单机上跑得完。
 
 要把 x-iztro 嵌进你们自己的产品里，需要。它是一个代码库，不是可以直接打开的软件。
 
-自己用 Cursor 或 Claude 看盘，不需要。见[给 AI 用](/zh/docs/guide/mcp)。
+自己用 Cursor 或 Claude 看盘，不需要。先装插件，见[给 AI 用](/zh/docs/guide/mcp)。
 
 但工作量很小：装上它、写三行调用、把结果接到你们已有的流程里。
 一个熟练的后端工程师，做出一个能跑的原型通常在半天以内。
@@ -71,7 +71,7 @@ x-iztro 排一张盘是毫秒级的，几十万条数据在单机上跑得完。
 | 输入 | 出生日期、时辰索引（0–12）、性别，三样 |
 | AI 用法 | 调 `chart.to_text()` 拿到盘面文字，直接喂大模型 |
 | 文档 | [快速开始](/zh/docs/guide/getting-started)、[语义化文本](/zh/docs/guide/guides/to-text) |
-| 不写代码 | [给 AI 用](/zh/docs/guide/mcp)：把 `https://ziwei.x-haose.com/mcp` 交给 Cursor 或 Claude |
+| 不写代码 | [给 AI 用](/zh/docs/guide/mcp)：Cursor 与 Claude 先装插件；其他客户端填 `https://ziwei.x-haose.com/mcp` |
 
 <Callout title="时辰索引怎么填">
 不是小时数，是 0–12 的十三个值：0 是早子时（00:00–01:00），

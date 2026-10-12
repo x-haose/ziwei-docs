@@ -1,41 +1,185 @@
 ---
-title: Zi Wei Dou Shu, one URL for the model
-description: Hand https://ziwei.x-haose.com/mcp to Cursor or Claude. The model charts and explains. chart and to_text are frozen, field-for-field with iztro v2.6.1.
+title: MCP
+description: One public MCP URL, https://ziwei.x-haose.com/mcp. On Cursor and Claude, install the plugin first — the Skill calls chart or to_text before any reading. ChatGPT, Grok and Codex use the same URL. chart and to_text are frozen, field-for-field with iztro v2.6.1.
 icon: Bot
 ---
 
-*For: anyone using Cursor or Claude. No library to install, no code to write*
+*For: any client that supports remote MCP (Streamable HTTP). Install the Cursor or Claude plugin first. ChatGPT, Grok and Codex use the same URL. No library to install, no code to write*
 
-Zi Wei Dou Shu, one URL for the model.
-
-Give it a solar date, an hour and a gender, and the model charts. Ask it to explain the chart in
-plain language and it will. The chart is not something the model computes in its head — it calls
-two frozen tools, and the result matches JS [iztro](https://github.com/SylarLong/iztro) v2.6.1
-field for field, held by 716,314 golden cases. The reading still belongs to the model. This page
-does not write the conclusion for it.
-
-## The URL
+Zi Wei Dou Shu has one public address. On Cursor and Claude, install the plugin: it binds the Skill to that address.
 
 ```text title="MCP"
 https://ziwei.x-haose.com/mcp
 ```
 
-The client only needs this address. No clone, no Python, no server of your own.
+Streamable HTTP, no authentication. The only tools are `chart` and `to_text`. Any remote MCP client can use this URL. A local stdio process does not apply: this is public HTTP, and there is no command to start.
 
 Three reasons this one line is safe to hand over:
 
 - **Field-for-field with iztro v2.6.1.** 716,314 golden cases (710k+). Zero tolerated deviations. That is a reproduction target, not a ruling on schools. See [Accuracy](/en/docs/guide/about/accuracy).
 - **A contract you can pin.** The only tools are `chart` and `to_text`. Names, required fields and response shapes are frozen, and written in the second half of this page.
-- **One URL is the whole install.** Streamable HTTP. Cursor and Claude both take the address directly.
+- **Install the plugin first.** Where a plugin exists, it ships the Skill and the Skill requires a tool call first. Clients without one fill in this URL, then paste the [instructions](#c-when-there-is-no-skill).
 
 <Callout title="Opening it in a browser does not show an article">
 `/mcp` is the endpoint a client connects to, not a docs page. Read this page. Copy the line above.
 </Callout>
 
-## Install in Cursor
+## A. Install the plugin
 
-User-level config lives in `~/.cursor/mcp.json`. For one project only, use `.cursor/mcp.json` in
-that project. Cursor Settings → MCP opens the same file.
+Cursor and Claude Code have a plugin. The plugin ships the Skill, and the Skill requires `chart` or `to_text` before any reading. Submitting to the Cursor Marketplace or the official Claude directory is not part of this release.
+
+<Callout title="The Skill forces a tool call first">
+The Skill is `plugin/shared/skills/ziwei/SKILL.md` in [x-ziwei](https://github.com/x-haose/x-ziwei). No tool result means no chart. Call `chart` and/or `to_text`, then interpret in plain language. Do not invent a third tool. There is no `lookup`. If a tool fails, say so. Do not fill in a fake chart, and do not guess the hour.
+</Callout>
+
+### Cursor
+
+Run this from the root of [x-ziwei](https://github.com/x-haose/x-ziwei). Copy the directory into the local plugin folder. Do not point a symlink outside the repo:
+
+```bash title="Cursor"
+mkdir -p ~/.cursor/plugins/local
+rm -rf ~/.cursor/plugins/local/ziwei
+cp -a plugin/cursor ~/.cursor/plugins/local/ziwei
+```
+
+<Steps>
+<Step>Run the commands above. The install directory must contain its own `skills/ziwei/SKILL.md`. Cursor does not accept a path that leaves the plugin root.</Step>
+<Step>Reload the window (Developer: Reload Window).</Step>
+<Step>In Customize, confirm the `ziwei` plugin, the skill, and the MCP URL `https://ziwei.x-haose.com/mcp`.</Step>
+<Step>Ask in plain language, for example “阳历 2000-8-16 寅时女命，排紫微盘”. The reply must call `chart` or `to_text` first.</Step>
+</Steps>
+
+<Callout type="warn" title="Local plugins can be disabled">
+On Team or Enterprise, if Allow Local Plugin Imports is off, this directory is not loaded. If a marketplace plugin of the same name is installed, the marketplace copy wins over the local one.
+</Callout>
+
+### Claude Code
+
+Both paths stay off the official marketplace. Run them from [x-ziwei](https://github.com/x-haose/x-ziwei).
+
+Load the directory directly:
+
+```bash title="Claude"
+claude --plugin-dir ./plugin/claude
+```
+
+Or install from this repo. `.claude-plugin/marketplace.json` at the repo root is this repo's plugin catalog, so the next two commands can find `plugin/claude`. It is not the official Claude plugin marketplace.
+
+```bash title="Claude"
+claude plugin marketplace add x-haose/x-ziwei
+claude plugin install ziwei@x-ziwei
+```
+
+In a session, that is `/plugin marketplace add x-haose/x-ziwei`, then install `ziwei@x-ziwei`.
+
+The plugin's `.mcp.json` uses `type: http` (Claude Code also accepts the alias `streamable-http`). No authentication. Components stay at the plugin root. They do not go inside `.claude-plugin/`.
+
+<Steps>
+<Step>Use `--plugin-dir`, or the marketplace commands above, to install `ziwei@x-ziwei`.</Step>
+<Step>Ask for a chart in plain language. The reply must call `chart` or `to_text` first.</Step>
+<Step>The tool list should show `chart` and `to_text`, and nothing else.</Step>
+</Steps>
+
+## B. Connectors
+
+Without a Cursor or Claude plugin, put the same public URL into the connector. These clients do not ship this repo's Skill. After connecting, paste the [instructions in C](#c-when-there-is-no-skill) into the system prompt or custom instructions.
+
+Only entry points that the current docs can check are written here. A product without an official plugin shell is not a published catalog plugin.
+
+### ChatGPT
+
+On the web, open [ChatGPT Plugins](https://chatgpt.com/plugins). Supported protocols are SSE and streaming HTTP. This is a custom MCP server you add yourself, not a published catalog plugin. Workspace permissions and Lockdown still apply.
+
+<Steps>
+<Step>Select +, then Add custom MCP server.</Step>
+<Step>Under Connection, set Server URL to `https://ziwei.x-haose.com/mcp`. Set authentication to No authentication.</Step>
+<Step>Accept the risk notice and select Create as a plugin. After it is installed, select it in a chat with `@`.</Step>
+<Step>Paste the [instructions in C](#c-when-there-is-no-skill) into custom instructions.</Step>
+</Steps>
+
+The steps are documented at [Add custom MCP server](https://developers.openai.com/api/docs/guides/custom-mcp-server).
+
+### Grok
+
+On the web, open [grok.com/connectors](https://grok.com/connectors), choose **New Connector**, then **Custom**, and set the URL to `https://ziwei.x-haose.com/mcp`. This service has no authentication. If the dialog asks for auth, leave it empty or skip OAuth. For Grok Business and Enterprise, a team admin must add the connector in the console before members can use it. See [Connectors](https://docs.x.ai/grok/connectors).
+
+Grok Build can also write the config. The command records it in `~/.grok/config.toml`:
+
+```bash title="Grok"
+grok mcp add --transport http ziwei https://ziwei.x-haose.com/mcp
+```
+
+Or by hand:
+
+```toml title="Grok"
+[mcp_servers.ziwei]
+url = "https://ziwei.x-haose.com/mcp"
+```
+
+See [MCP Servers](https://docs.x.ai/build/features/mcp-servers). Then paste the [instructions in C](#c-when-there-is-no-skill).
+
+### Codex
+
+Codex stores a Streamable HTTP server in `~/.codex/config.toml`. A trusted project can use `.codex/config.toml` in the project instead. The ChatGPT desktop app, the Codex CLI and the IDE extension share this file.
+
+```toml title="Codex"
+[mcp_servers.ziwei]
+url = "https://ziwei.x-haose.com/mcp"
+```
+
+The equivalent command:
+
+```bash title="Codex"
+codex mcp add ziwei --url https://ziwei.x-haose.com/mcp
+```
+
+Do not add a bearer token, and do not run `codex mcp login`. When no credential source resolves, Codex connects without authentication. In the desktop app or the IDE, choose Streamable HTTP and the same URL. See [Model Context Protocol](https://developers.openai.com/codex/mcp).
+
+For the OpenAI Agents SDK on hosted Responses calls, use `HostedMCPTool` with `server_url` set to `https://ziwei.x-haose.com/mcp`. To connect inside the process, use `MCPServerStreamableHttp` with `params["url"]` set to the same address. Neither call should send an Authorization header.
+
+## C. When there is no Skill
+
+Any client that can take a remote MCP URL uses `https://ziwei.x-haose.com/mcp`, with no auth header. When there is no Skill channel, paste one of the blocks below into the system prompt or custom instructions. The rules match the plugin Skill.
+
+### English
+
+```text title="Instructions"
+You interpret Zi Wei Dou Shu charts. The only MCP endpoint is https://ziwei.x-haose.com/mcp. The only tools are chart and to_text.
+
+Rules:
+- Never invent a chart, star placement, mutagen, or decade from memory. No tool result means no chart.
+- Always call chart and/or to_text first, then interpret in plain language.
+- Do not invent a third tool. There is no lookup.
+- Interpretation belongs to you. The engine only casts the chart and is gold-aligned with iztro. Do not rewrite the result into a different set of stars.
+- If a tool fails, say so. Do not fill in a fake chart, and do not guess the hour.
+
+Solar minimum for both tools: calendar=solar, date=YYYY-M-D, timeIndex=0-12, gender=male or female.
+Ask when the hour is unknown. Lunar dates also require leap: notLeap, leap, or leapFixed.
+Use chart for the structured chart and to_text for Markdown. For a horoscope, pass targetDate and targetTimeIndex to chart; set includeHoroscope=true on to_text with the same target date and hour.
+```
+
+### 中文
+
+```text title="说明"
+你是紫微斗数解读助手。公网 MCP 只有 https://ziwei.x-haose.com/mcp，工具只有 chart 与 to_text。
+
+硬规则：
+- 禁止凭记忆编造命盘、星曜、四化或大限。没有工具结果就没有盘。
+- 先调用 chart 和/或 to_text，再用人话解释。
+- 不要发明第三个工具，没有 lookup。
+- 解释属于你。引擎只排盘，盘面与 iztro 金标对齐。不要改写成另一套星曜。
+- 工具失败就说明错误，不要补假盘，也不要猜时辰。
+
+阳历最短入参（chart 与 to_text 相同）：calendar=solar，date=YYYY-M-D，timeIndex=0-12，gender=male 或 female。
+时辰不明先问。农历必须另给 leap：notLeap、leap 或 leapFixed。
+要盘面用 chart；要 Markdown 用 to_text。运限时 chart 同时给 targetDate 与 targetTimeIndex；to_text 设 includeHoroscope=true 并带同样的目标日、时。
+```
+
+## Compatibility / debugging
+
+Pasting JSON only attaches the URL. It does not install the Skill. When a plugin exists, use [A](#a-install-the-plugin). These shapes are for a plugin that did not load, or for a client that only has a config file.
+
+Cursor's user config is `~/.cursor/mcp.json`. For one project only, use `.cursor/mcp.json` in that project. The plugin's own `mcp.json` is this same object:
 
 ```json title="Cursor"
 {
@@ -47,16 +191,7 @@ that project. Cursor Settings → MCP opens the same file.
 }
 ```
 
-<Steps>
-<Step>Paste the JSON into the config. If other servers are already there, merge the `"ziwei"` entry into `mcpServers` — do not replace the whole file.</Step>
-<Step>Back in MCP settings, confirm `ziwei` is connected. If it stays dark, reload the window.</Step>
-<Step>Open a new chat and try [the two lines below](#what-to-say-once-it-is-installed).</Step>
-</Steps>
-
-## Install in Claude
-
-Claude's shortest config is the same object with `"type": "http"` added. For Claude Code, put it in
-`.mcp.json` at the project root, or under `mcpServers` in your user config.
+Claude adds `"type": "http"`. For Claude Code, put it in `.mcp.json` at the project root, or under `mcpServers` in your user config. Claude Desktop and claude.ai custom connectors that ask for JSON use the same block:
 
 ```json title="Claude"
 {
@@ -69,18 +204,23 @@ Claude's shortest config is the same object with `"type": "http"` added. For Cla
 }
 ```
 
-Claude Desktop and claude.ai custom connectors take the same URL, `https://ziwei.x-haose.com/mcp`.
-If the connector asks for JSON, use the block above.
+Cascade (Windsurf / Devin Desktop) uses `serverUrl` for a remote HTTP entry. Open the config from the MCP menu and write it there. The current Devin docs default to `~/.config/devin/mcp_config.json` (or that directory under `XDG_CONFIG_HOME` when it is set):
 
-<Steps>
-<Step>Save the config, or paste the URL into the connector.</Step>
-<Step>Open a new chat. The tool list should show `chart` and `to_text`, and nothing else.</Step>
-<Step>Try [the two lines below](#what-to-say-once-it-is-installed).</Step>
-</Steps>
+```json title="Cascade"
+{
+  "mcpServers": {
+    "ziwei": {
+      "serverUrl": "https://ziwei.x-haose.com/mcp"
+    }
+  }
+}
+```
+
+If other servers are already there, merge the `"ziwei"` entry. Do not replace the whole file. A local stdio MCP server does not apply.
 
 ## What to say once it is installed
 
-You do not need the parameter names. Say it in plain language and the model fills them in.
+You do not need the parameter names. Say it in plain language and the model fills them in. With the plugin installed, “阳历 2000-8-16 寅时女命，排紫微盘” is enough. The reply must call the tool first.
 
 | You say | The model calls |
 | --- | --- |
