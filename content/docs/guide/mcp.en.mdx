@@ -1,10 +1,10 @@
 ---
 title: Zi Wei Dou Shu, one URL for the model
-description: Hand https://ziwei.x-haose.com/mcp to Cursor or Claude. The model charts and explains. chart and to_text are frozen, field-for-field with iztro v2.6.1.
+description: Hand https://ziwei.x-haose.com/mcp to any client that supports remote MCP (Streamable HTTP). Cursor, Claude, ChatGPT and Grok are examples. The model charts and explains. chart and to_text are frozen, field-for-field with iztro v2.6.1.
 icon: Bot
 ---
 
-*For: anyone using Cursor or Claude. No library to install, no code to write*
+*For: any client that supports remote MCP (Streamable HTTP). Cursor, Claude, ChatGPT and Grok are examples. No library to install, no code to write*
 
 Zi Wei Dou Shu, one URL for the model.
 
@@ -26,13 +26,18 @@ Three reasons this one line is safe to hand over:
 
 - **Field-for-field with iztro v2.6.1.** 716,314 golden cases (710k+). Zero tolerated deviations. That is a reproduction target, not a ruling on schools. See [Accuracy](/en/docs/guide/about/accuracy).
 - **A contract you can pin.** The only tools are `chart` and `to_text`. Names, required fields and response shapes are frozen, and written in the second half of this page.
-- **One URL is the whole install.** Streamable HTTP. Cursor and Claude both take the address directly.
+- **One URL is the whole install.** Public Streamable HTTP. Any Streamable HTTP MCP client takes this one URL. A local stdio process does not apply.
 
 <Callout title="Opening it in a browser does not show an article">
 `/mcp` is the endpoint a client connects to, not a docs page. Read this page. Copy the line above.
 </Callout>
 
-## Install in Cursor
+## Common clients
+
+Same URL, no authentication. Cursor, Claude, ChatGPT and Grok below are examples.
+Any client that supports remote MCP (Streamable HTTP) can use this one line.
+
+### Install in Cursor
 
 User-level config lives in `~/.cursor/mcp.json`. For one project only, use `.cursor/mcp.json` in
 that project. Cursor Settings → MCP opens the same file.
@@ -53,7 +58,7 @@ that project. Cursor Settings → MCP opens the same file.
 <Step>Open a new chat and try [the two lines below](#what-to-say-once-it-is-installed).</Step>
 </Steps>
 
-## Install in Claude
+### Install in Claude
 
 Claude's shortest config is the same object with `"type": "http"` added. For Claude Code, put it in
 `.mcp.json` at the project root, or under `mcpServers` in your user config.
@@ -77,6 +82,56 @@ If the connector asks for JSON, use the block above.
 <Step>Open a new chat. The tool list should show `chart` and `to_text`, and nothing else.</Step>
 <Step>Try [the two lines below](#what-to-say-once-it-is-installed).</Step>
 </Steps>
+
+### ChatGPT / GPT
+
+On ChatGPT web, a remote MCP server is a custom plugin. Supported protocols are SSE and streaming HTTP.
+
+<Steps>
+<Step>Open ChatGPT on the web, go to Plugins, select +, then Add custom MCP server.</Step>
+<Step>Enter a name. Set Server URL to `https://ziwei.x-haose.com/mcp`. Set authentication to no auth.</Step>
+<Step>Accept the risk notice and select Create as a plugin. Install the plugin, open a new chat, and try [the two lines below](#what-to-say-once-it-is-installed).</Step>
+</Steps>
+
+The steps are documented at [Add custom MCP server](https://developers.openai.com/api/docs/guides/custom-mcp-server).
+
+Codex shares `~/.codex/config.toml` across the ChatGPT desktop app, the Codex CLI and the IDE
+extension. A Streamable HTTP server needs only the URL. With no bearer token and no OAuth
+configured, Codex connects without authentication:
+
+```toml title="Codex"
+[mcp_servers.ziwei]
+url = "https://ziwei.x-haose.com/mcp"
+```
+
+See [Model Context Protocol](https://developers.openai.com/codex/mcp).
+
+### Grok
+
+On the web, open [grok.com/connectors](https://grok.com/connectors), choose New Connector, then
+Custom, and paste the same URL, `https://ziwei.x-haose.com/mcp`, with no authentication. See
+[Connectors](https://docs.x.ai/grok/connectors).
+
+From the CLI:
+
+```bash title="Grok"
+grok mcp add --transport http ziwei https://ziwei.x-haose.com/mcp
+```
+
+Or in `~/.grok/config.toml`:
+
+```toml title="Grok"
+[mcp_servers.ziwei]
+url = "https://ziwei.x-haose.com/mcp"
+```
+
+See [MCP Servers](https://docs.x.ai/build/features/mcp-servers).
+
+### Other clients
+
+If the client supports remote MCP / Streamable HTTP, fill in only `https://ziwei.x-haose.com/mcp`.
+A local stdio MCP server — a process the client starts on your machine — does not apply. This
+endpoint is public HTTP.
 
 ## What to say once it is installed
 

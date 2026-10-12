@@ -1,10 +1,10 @@
 ---
 title: 紫微斗数，一行地址交给模型
-description: 把 https://ziwei.x-haose.com/mcp 交给 Cursor 或 Claude。模型排盘、用白话讲盘。chart 与 to_text 已冻，与 iztro v2.6.1 逐字段对齐。
+description: 把 https://ziwei.x-haose.com/mcp 交给任何支持远程 MCP（Streamable HTTP）的客户端。Cursor、Claude、ChatGPT、Grok 都是例子。模型排盘、用白话讲盘。chart 与 to_text 已冻，与 iztro v2.6.1 逐字段对齐。
 icon: Bot
 ---
 
-*适合：用 Cursor 或 Claude 的人。不用装库，不用写代码*
+*适合：任何支持远程 MCP（Streamable HTTP）的客户端。Cursor、Claude、ChatGPT、Grok 都是例子。不用装库，不用写代码*
 
 紫微斗数，一行地址交给模型。
 
@@ -24,13 +24,18 @@ https://ziwei.x-haose.com/mcp
 
 - **与 iztro v2.6.1 逐字段对齐。** 716,314 例金标（71 万+），允许的差异是 0。这是复现口径，不是流派裁决。见[准确性保证](/zh/docs/guide/about/accuracy)。
 - **契约可钉。** 工具只有 `chart` 和 `to_text`。名字、必填字段、返回形状已经冻住，写在这一页的后半。
-- **一行 URL 即用。** Streamable HTTP。Cursor 与 Claude 都直接认这个地址。
+- **一行 URL 即用。** 公开的 Streamable HTTP。任何支持这种远程 MCP 的客户端都只填这一行。本地 stdio 进程用不上。
 
 <Callout title="浏览器打开它看不到文章">
 `/mcp` 是给客户端连的端点，不是文档页。要读的是这一页；要复制的是上面那一行。
 </Callout>
 
-## 装进 Cursor
+## 常见客户端
+
+同一行地址，不用登录。下面是 Cursor、Claude、ChatGPT、Grok 的填法。
+任何支持远程 MCP（Streamable HTTP）的客户端都可以用这一行。
+
+### 装进 Cursor
 
 用户级配置写在 `~/.cursor/mcp.json`，只给当前项目用就写在项目里的 `.cursor/mcp.json`。
 也可以从 Cursor Settings → MCP 打开同一份文件。
@@ -51,7 +56,7 @@ https://ziwei.x-haose.com/mcp
 <Step>新开一个对话，用[下面这两句](#装上之后怎么说)试一次。</Step>
 </Steps>
 
-## 装进 Claude
+### 装进 Claude
 
 比 Cursor 多一个 `"type": "http"`。Claude Code 写在项目根目录的 `.mcp.json`，或写进用户配置里的 `mcpServers`。
 
@@ -73,6 +78,51 @@ Claude 桌面端和 claude.ai 走自定义连接器时，地址填同一行 `htt
 <Step>新开一个对话。工具列表里应能看到 `chart` 和 `to_text`，没有第三个。</Step>
 <Step>用[下面这两句](#装上之后怎么说)试一次。</Step>
 </Steps>
+
+### ChatGPT / GPT
+
+ChatGPT 网页把远程 MCP 当成自定义插件。支持的协议是 SSE 和 streaming HTTP。
+
+<Steps>
+<Step>打开 ChatGPT 网页，进入 Plugins，点 +，选择 Add custom MCP server。</Step>
+<Step>填一个名字。Server URL 填 `https://ziwei.x-haose.com/mcp`，authentication 选 no auth（不需要认证）。</Step>
+<Step>确认风险提示，选择 Create as a plugin。装上这个插件，新开一个对话，用[下面这两句](#装上之后怎么说)试一次。</Step>
+</Steps>
+
+步骤见 [Add custom MCP server](https://developers.openai.com/api/docs/guides/custom-mcp-server)。
+
+Codex（ChatGPT 桌面端、Codex CLI、IDE 扩展共用 `~/.codex/config.toml`）对 Streamable HTTP 只写地址。不配 token、也不配 OAuth 时，按无认证连接：
+
+```toml title="Codex"
+[mcp_servers.ziwei]
+url = "https://ziwei.x-haose.com/mcp"
+```
+
+见 [Model Context Protocol](https://developers.openai.com/codex/mcp)。
+
+### Grok
+
+网页：打开 [grok.com/connectors](https://grok.com/connectors)，New Connector → Custom，贴上同一行 `https://ziwei.x-haose.com/mcp`，不需要认证。见 [Connectors](https://docs.x.ai/grok/connectors)。
+
+命令行：
+
+```bash title="Grok"
+grok mcp add --transport http ziwei https://ziwei.x-haose.com/mcp
+```
+
+或写进 `~/.grok/config.toml`：
+
+```toml title="Grok"
+[mcp_servers.ziwei]
+url = "https://ziwei.x-haose.com/mcp"
+```
+
+见 [MCP Servers](https://docs.x.ai/build/features/mcp-servers)。
+
+### 其他客户端
+
+客户端支持远程 MCP / Streamable HTTP 时，只填 `https://ziwei.x-haose.com/mcp`。
+本地 stdio MCP 是客户端去拉起一个本机进程，这里用不上：这一行是公开的 HTTP。
 
 ## 装上之后怎么说
 
