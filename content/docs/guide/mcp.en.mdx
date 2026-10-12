@@ -1,32 +1,31 @@
 ---
 title: MCP
-description: One public MCP URL, https://ziwei.x-haose.com/mcp. On Cursor and Claude, install the plugin first — the Skill calls chart or to_text before any reading. ChatGPT, Grok and Codex use the same URL. chart and to_text are frozen, field-for-field with iztro v2.6.1.
+description: "A public Ziwei MCP: one URL for every client."
 icon: Bot
 ---
 
-*For: any client that supports remote MCP (Streamable HTTP). Install the Cursor or Claude plugin first. ChatGPT, Grok and Codex use the same URL. No library to install, no code to write*
+*For: someone connecting Ziwei to a chat client for the first time. No library to install, no code to write.*
 
-Zi Wei Dou Shu has one public address. On Cursor and Claude, install the plugin: it binds the Skill to that address.
+On Cursor and Claude, install the plugin. The Skill calls `chart` / `to_text` first, then explains. Other clients follow [B. Connectors](#b-connectors) and [C. When there is no Skill](#c-when-there-is-no-skill) below.
 
-```text title="MCP"
-https://ziwei.x-haose.com/mcp
-```
+<Callout title="Address and guarantee">
 
-Streamable HTTP, no authentication. The only tools are `chart` and `to_text`. Any remote MCP client can use this URL. A local stdio process does not apply: this is public HTTP, and there is no command to start.
+- Address: `https://ziwei.x-haose.com/mcp`. Streamable HTTP, no authentication.
+- `chart` and `to_text` are frozen, field-for-field with iztro v2.6.1. 716,314 golden cases, zero tolerated deviations. That is a reproduction target, not a ruling on schools. See [Accuracy](/en/docs/guide/about/accuracy).
 
-Three reasons this one line is safe to hand over:
+</Callout>
 
-- **Field-for-field with iztro v2.6.1.** 716,314 golden cases (710k+). Zero tolerated deviations. That is a reproduction target, not a ruling on schools. See [Accuracy](/en/docs/guide/about/accuracy).
-- **A contract you can pin.** The only tools are `chart` and `to_text`. Names, required fields and response shapes are frozen, and written in the second half of this page.
-- **Install the plugin first.** Where a plugin exists, it ships the Skill and the Skill requires a tool call first. Clients without one fill in this URL, then paste the [instructions](#c-when-there-is-no-skill).
+A local stdio process does not apply: this is public HTTP, and there is no command to start. Names, required fields and response shapes are written in the second half of this page.
 
 <Callout title="Opening it in a browser does not show an article">
-`/mcp` is the endpoint a client connects to, not a docs page. Read this page. Copy the line above.
+`/mcp` is the endpoint a client connects to, not a docs page. Read this page. Copy the address above.
 </Callout>
 
 ## A. Install the plugin
 
-Cursor and Claude Code have a plugin. The plugin ships the Skill, and the Skill requires `chart` or `to_text` before any reading. Submitting to the Cursor Marketplace or the official Claude directory is not part of this release.
+On Cursor and Claude, install the plugin. The plugin ships the Skill, and the Skill calls `chart` or `to_text` before any reading.
+
+The official Cursor Marketplace listing **is not submitted, so a store install does not work today**. Claude uses the marketplace command below. That is the shortest official install channel available now.
 
 <Callout title="The Skill forces a tool call first">
 The Skill is `plugin/shared/skills/ziwei/SKILL.md` in [x-ziwei](https://github.com/x-haose/x-ziwei). No tool result means no chart. Call `chart` and/or `to_text`, then interpret in plain language. Do not invent a third tool. There is no `lookup`. If a tool fails, say so. Do not fill in a fake chart, and do not guess the hour.
@@ -34,7 +33,22 @@ The Skill is `plugin/shared/skills/ziwei/SKILL.md` in [x-ziwei](https://github.c
 
 ### Cursor
 
-Run this from the root of [x-ziwei](https://github.com/x-haose/x-ziwei). Copy the directory into the local plugin folder. Do not point a symlink outside the repo:
+The user path is install, reload, then ask in plain language. No terminal.
+
+The official Marketplace listing **is not submitted, so you cannot install from the store today**. Do not read the steps below as something you can finish in the store right now. Once it is listed, install it from the Marketplace.
+
+Team and Enterprise can import from the repo today. That is still not the public store: Dashboard → Plugins & MCPs → Import. An admin imports the [x-ziwei](https://github.com/x-haose/x-ziwei) repository. Members then enable the plugin in Cursor.
+
+<Steps>
+<Step>Install the plugin. Team and Enterprise use the repo import above. After the store listing exists, install it from the Marketplace.</Step>
+<Step>Reload the window (Developer: Reload Window).</Step>
+<Step>Ask in plain language, for example “阳历 2000-8-16 寅时女命，排紫微盘”. The reply calls `chart` or `to_text` first.</Step>
+</Steps>
+
+<Accordions>
+<Accordion title="Contributors / smoke test before the listing">
+
+On a personal machine, before the store listing exists, the only option is to copy the plugin into the local plugin folder. That is not the user install. Run this from the root of [x-ziwei](https://github.com/x-haose/x-ziwei). Copy the directory in. Do not point a symlink outside the repo:
 
 ```bash title="Cursor"
 mkdir -p ~/.cursor/plugins/local
@@ -42,43 +56,42 @@ rm -rf ~/.cursor/plugins/local/ziwei
 cp -a plugin/cursor ~/.cursor/plugins/local/ziwei
 ```
 
-<Steps>
-<Step>Run the commands above. The install directory must contain its own `skills/ziwei/SKILL.md`. Cursor does not accept a path that leaves the plugin root.</Step>
-<Step>Reload the window (Developer: Reload Window).</Step>
-<Step>In Customize, confirm the `ziwei` plugin, the skill, and the MCP URL `https://ziwei.x-haose.com/mcp`.</Step>
-<Step>Ask in plain language, for example “阳历 2000-8-16 寅时女命，排紫微盘”. The reply must call `chart` or `to_text` first.</Step>
-</Steps>
+The install directory must contain its own `skills/ziwei/SKILL.md`. Cursor does not accept a path that leaves the plugin root. After the copy, reload the window. In Customize, confirm the `ziwei` plugin, the skill, and the MCP URL `https://ziwei.x-haose.com/mcp`.
 
-<Callout type="warn" title="Local plugins can be disabled">
 On Team or Enterprise, if Allow Local Plugin Imports is off, this directory is not loaded. If a marketplace plugin of the same name is installed, the marketplace copy wins over the local one.
-</Callout>
+
+</Accordion>
+</Accordions>
 
 ### Claude Code
 
-Both paths stay off the official marketplace. Run them from [x-ziwei](https://github.com/x-haose/x-ziwei).
+Install with this command. Do not copy a directory:
 
-Load the directory directly:
+```bash title="Claude"
+claude plugin install ziwei --marketplace x-haose/x-ziwei
+```
+
+In a session: `/plugin marketplace add x-haose/x-ziwei`, then `/plugin install ziwei@x-ziwei`.
+
+The plugin's `.mcp.json` uses `type: http` (Claude Code also accepts the alias `streamable-http`). No authentication. Components stay at the plugin root. They do not go inside `.claude-plugin/`.
+
+<Steps>
+<Step>Run the command above, or use `/plugin` in a session to install `ziwei` from `x-haose/x-ziwei`.</Step>
+<Step>Ask for a chart in plain language. The reply calls `chart` or `to_text` first.</Step>
+<Step>The tool list should show `chart` and `to_text`, and nothing else.</Step>
+</Steps>
+
+<Accordions>
+<Accordion title="Contributors: local directory">
+
+Load the directory from [x-ziwei](https://github.com/x-haose/x-ziwei) without the marketplace. Contributors only:
 
 ```bash title="Claude"
 claude --plugin-dir ./plugin/claude
 ```
 
-Or install from this repo. `.claude-plugin/marketplace.json` at the repo root is this repo's plugin catalog, so the next two commands can find `plugin/claude`. It is not the official Claude plugin marketplace.
-
-```bash title="Claude"
-claude plugin marketplace add x-haose/x-ziwei
-claude plugin install ziwei@x-ziwei
-```
-
-In a session, that is `/plugin marketplace add x-haose/x-ziwei`, then install `ziwei@x-ziwei`.
-
-The plugin's `.mcp.json` uses `type: http` (Claude Code also accepts the alias `streamable-http`). No authentication. Components stay at the plugin root. They do not go inside `.claude-plugin/`.
-
-<Steps>
-<Step>Use `--plugin-dir`, or the marketplace commands above, to install `ziwei@x-ziwei`.</Step>
-<Step>Ask for a chart in plain language. The reply must call `chart` or `to_text` first.</Step>
-<Step>The tool list should show `chart` and `to_text`, and nothing else.</Step>
-</Steps>
+</Accordion>
+</Accordions>
 
 ## B. Connectors
 
