@@ -6,7 +6,7 @@ icon: Bot
 
 *For: someone connecting Ziwei to a chat client for the first time. No library to install, no code to write.*
 
-On Cursor and Claude, install the plugin. The Skill calls `chart` / `to_text` first, then explains. Other clients follow [B. Connectors](#b-connectors) and [C. When there is no Skill](#c-when-there-is-no-skill) below.
+On Cursor and Claude, install the plugin. The Skill calls `chart` / `to_text` first, then explains. ChatGPT imports a plugin marketplace under [B. Connectors](#b-connectors). Other clients use the same URL and the instructions in [C. When there is no Skill](#c-when-there-is-no-skill).
 
 <Callout title="Address and guarantee">
 
@@ -25,11 +25,37 @@ A local stdio process does not apply: this is public HTTP, and there is no comma
 
 On Cursor and Claude, install the plugin. The plugin ships the Skill, and the Skill calls `chart` or `to_text` before any reading.
 
-The official Cursor Marketplace listing **is not submitted, so a store install does not work today**. Claude uses the marketplace command below. That is the shortest official install channel available now.
-
 <Callout title="The Skill forces a tool call first">
 The Skill is `plugin/shared/skills/ziwei/SKILL.md` in [x-ziwei](https://github.com/x-haose/x-ziwei). No tool result means no chart. Call `chart` and/or `to_text`, then interpret in plain language. Do not invent a third tool. There is no `lookup`. If a tool fails, say so. Do not fill in a fake chart, and do not guess the hour.
 </Callout>
+
+### Claude Code
+
+**This is the user install today.**
+
+```bash title="Claude"
+claude plugin install ziwei --marketplace x-haose/x-ziwei
+```
+
+<Steps>
+<Step>Run the command above. In a session: `/plugin marketplace add x-haose/x-ziwei`, then `/plugin install ziwei@x-ziwei`.</Step>
+<Step>Ask for a chart in plain language. The reply calls `chart` or `to_text` first.</Step>
+<Step>The tool list should show `chart` and `to_text`, and nothing else.</Step>
+</Steps>
+
+<Accordions>
+<Accordion title="Contributors only: --plugin-dir">
+
+Load the directory from [x-ziwei](https://github.com/x-haose/x-ziwei) without the marketplace. Contributors only:
+
+```bash title="Claude"
+claude --plugin-dir ./plugin/claude
+```
+
+</Accordion>
+</Accordions>
+
+The plugin's `.mcp.json` uses `type: http` (Claude Code also accepts the alias `streamable-http`). No authentication. Components stay at the plugin root. They do not go inside `.claude-plugin/`.
 
 ### Cursor
 
@@ -63,54 +89,44 @@ On Team or Enterprise, if Allow Local Plugin Imports is off, this directory is n
 </Accordion>
 </Accordions>
 
-### Claude Code
-
-Install with this command. Do not copy a directory:
-
-```bash title="Claude"
-claude plugin install ziwei --marketplace x-haose/x-ziwei
-```
-
-In a session: `/plugin marketplace add x-haose/x-ziwei`, then `/plugin install ziwei@x-ziwei`.
-
-The plugin's `.mcp.json` uses `type: http` (Claude Code also accepts the alias `streamable-http`). No authentication. Components stay at the plugin root. They do not go inside `.claude-plugin/`.
-
-<Steps>
-<Step>Run the command above, or use `/plugin` in a session to install `ziwei` from `x-haose/x-ziwei`.</Step>
-<Step>Ask for a chart in plain language. The reply calls `chart` or `to_text` first.</Step>
-<Step>The tool list should show `chart` and `to_text`, and nothing else.</Step>
-</Steps>
-
-<Accordions>
-<Accordion title="Contributors: local directory">
-
-Load the directory from [x-ziwei](https://github.com/x-haose/x-ziwei) without the marketplace. Contributors only:
-
-```bash title="Claude"
-claude --plugin-dir ./plugin/claude
-```
-
-</Accordion>
-</Accordions>
-
 ## B. Connectors
 
-Without a Cursor or Claude plugin, put the same public URL into the connector. These clients do not ship this repo's Skill. After connecting, paste the [instructions in C](#c-when-there-is-no-skill) into the system prompt or custom instructions.
+ChatGPT installs by importing a plugin marketplace. The steps are below. Clients without a plugin shell put the same public URL into the connector. Those connections do not ship this repo's Skill. After connecting, paste the [instructions in C](#c-when-there-is-no-skill) into the system prompt or custom instructions.
 
 Only entry points that the current docs can check are written here. A product without an official plugin shell is not a published catalog plugin.
 
 ### ChatGPT
 
-On the web, open [ChatGPT Plugins](https://chatgpt.com/plugins). Supported protocols are SSE and streaming HTTP. This is a custom MCP server you add yourself, not a published catalog plugin. Workspace permissions and Lockdown still apply.
+Today's install is **Plugins → Add → Import marketplace**. Set Source to the GitHub repository, authorize GitHub, import the marketplace, then install `ziwei`. A listing in the public plugin directory is a separate path, and it is not ready.
+
+The same Add menu has three items. Each one does a different job:
+
+- **Import marketplace** imports a marketplace from GitHub. This is how you install ziwei. The current Chinese client labels this item **添加插件市场**.
+- **Create a plugin** scaffolds a plugin package. The ziwei install is Import marketplace.
+- **Record a skill** records a skill. It does not install an MCP server.
 
 <Steps>
-<Step>Select +, then Add custom MCP server.</Step>
-<Step>Under Connection, set Server URL to `https://ziwei.x-haose.com/mcp`. Set authentication to No authentication.</Step>
-<Step>Accept the risk notice and select Create as a plugin. After it is installed, select it in a chat with `@`.</Step>
-<Step>Paste the [instructions in C](#c-when-there-is-no-skill) into custom instructions.</Step>
+<Step>Open Plugins, select Add, then Import marketplace. On the Chinese client, that item reads 添加插件市场.</Step>
+<Step>On the official admin form, set Source to `https://github.com/x-haose/x-ziwei` and leave Path empty. The repository root already has `.claude-plugin/marketplace.json`. Codex and ChatGPT also look for `.agents/plugins/marketplace.json`; that file is being added to the repository. Do not enter the manifest filename. Leave Branch, tag, or commit empty to use the default branch.</Step>
+<Step>Select Import marketplace and authorize GitHub when prompted.</Step>
+<Step>After the import, install `ziwei`. In a chat, type `@` and select it.</Step>
 </Steps>
 
-The steps are documented at [Add custom MCP server](https://developers.openai.com/api/docs/guides/custom-mcp-server).
+The official write-up is a workspace admin import: Admin Console → Plugins → Add → **Import marketplace**, with the fields **Source** and **Path**, and the confirm control is also **Import marketplace**. The personal client's Chinese menu says 「添加插件市场」. Whether those two forms have the same fields is not confirmed on a real device. See [Importing and syncing plugin marketplaces from GitHub](https://help.openai.com/en/articles/20001504-importing-and-syncing-plugin-marketplaces-from-github).
+
+<Callout type="warn" title="Web use still needs a real-device check">
+Official text: an imported plugin that declares MCP servers in `mcp.json` or `.mcp.json` may be marked **Desktop only**, even when the server is a remote HTTPS URL. A Desktop only plugin cannot run in ChatGPT on the web. The ziwei plugin ships `.mcp.json`. Whether the web client can use it still needs a real-device check.
+</Callout>
+
+<Accordions>
+<Accordion title="Backup: custom MCP">
+
+This is a separate path. Set the Server URL to `https://ziwei.x-haose.com/mcp`, choose No authentication, then Create as a plugin, install it, and select it in a chat with `@`. Import marketplace does not use this URL.
+
+This path has no plugin Skill. Paste the [instructions in C](#c-when-there-is-no-skill) into custom instructions. The documented entry is Add custom MCP server. Supported protocols are SSE and streaming HTTP. See [Add custom MCP server](https://developers.openai.com/api/docs/guides/custom-mcp-server).
+
+</Accordion>
+</Accordions>
 
 ### Grok
 
